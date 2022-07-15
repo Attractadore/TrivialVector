@@ -24,20 +24,21 @@ class VectorIterator: std::contiguous_iterator_tag {
 };
 
 #define TRIVIAL_VECTOR_HEADER_TEMPLATE \
-template<typename T, std::unsigned_integral SizeT, typename Allocator> \
+template<typename T, typename Allocator> \
     requires std::is_trivial_v<T>
-#define TRIVIAL_VECTOR_HEADER Attractadore::TrivialVectorNameSpace::TrivialVectorHeader<T, SizeT, Allocator>
+#define TRIVIAL_VECTOR_HEADER Attractadore::TrivialVectorNameSpace::TrivialVectorHeader<T, Allocator>
 
 template<
     typename T,
-    std::unsigned_integral SizeT = unsigned,
     typename Allocator = std::allocator<T>
 > requires std::is_trivial_v<T>
 class TrivialVectorHeader: private Allocator {
+protected:
     using AllocTraits = std::allocator_traits<Allocator>;
     using Ptr = AllocTraits::pointer;
     using PtrTraits = std::pointer_traits<Ptr>;
     using ConstPtr = AllocTraits::const_pointer;
+    using SizeT = unsigned;
 
     Ptr         m_data;
     SizeT       m_capacity;
@@ -52,15 +53,25 @@ public:
     using const_reference = const value_type&;
     using pointer = Ptr;
     using const_pointer = ConstPtr;
+    // TODO: replace with real iterators
+#if 0
     using iterator = VectorIterator<pointer>;
     using const_iterator = VectorIterator<const_pointer>;
+#else
+    using iterator = pointer;
+    using const_iterator = const_pointer;
+#endif
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 protected:
-    constexpr TrivialVectorHeader(Allocator alloc, Ptr data_init, SizeT capacity) noexcept:
-        Allocator{std::move(alloc)}, m_data{data_init}, m_capacity{capacity} {}
-    constexpr ~TrivialVectorHeader() = default;
+    constexpr TrivialVectorHeader(Allocator alloc, Ptr data_init, size_type capacity) noexcept:
+        Allocator{std::move(alloc)}, m_data{data_init}, m_capacity(capacity) {
+        assert(capacity <= max_size());
+    }
+    constexpr TrivialVectorHeader(const TrivialVectorHeader&) = delete;
+    constexpr TrivialVectorHeader(TrivialVectorHeader&&) = delete;
+    constexpr ~TrivialVectorHeader();
 
 public:
     constexpr TrivialVectorHeader& operator=(const TrivialVectorHeader& other);
@@ -127,8 +138,8 @@ public:
     constexpr const_iterator cend() const noexcept { return end(); }
     constexpr const_iterator begin() const noexcept { return const_iterator{m_data}; }
     constexpr const_iterator end() const noexcept { return const_iterator{m_data + size()}; }
-    constexpr iterator begin() noexcept { return const_iterator{m_data}; }
-    constexpr iterator end() noexcept { return const_iterator{m_data + size()}; }
+    constexpr iterator begin() noexcept { return iterator{m_data}; }
+    constexpr iterator end() noexcept { return iterator{m_data + size()}; }
 
     constexpr const_iterator crbegin() const noexcept { return rbegin(); }
     constexpr const_iterator crend() const noexcept { return rend(); }
@@ -141,7 +152,7 @@ public:
     constexpr size_type size() const noexcept { return m_size; }
     static constexpr size_type max_size() noexcept {
         return std::min<size_t>(
-            std::numeric_limits<difference_type>::max(),
+            std::numeric_limits<SizeT>::max(),
             std::numeric_limits<size_type>::max() / sizeof(value_type));
     }
     constexpr void reserve(size_type new_capacity);
@@ -241,8 +252,6 @@ public:
     );
 
 protected:
-    constexpr allocator_type& get_allocator() noexcept { return *this; }
-
     struct AllocateResult {
         pointer     ptr;
         size_type   n;
@@ -273,9 +282,9 @@ template<std::ranges::input_range R>
 TrivialVectorHeader(R&& r) -> TrivialVectorHeader<std::ranges::range_value_t<R>>;
 
 #define INLINE_TRIVIAL_VECTOR_TEMPLATE \
-template<typename T, unsigned InlineCapacity, std::unsigned_integral SizeT, typename Allocator> \
+template<typename T, unsigned InlineCapacity, typename Allocator> \
     requires std::is_trivial_v<T>
-#define INLINE_TRIVIAL_VECTOR Attractadore::TrivialVectorNameSpace::InlineTrivialVector<T, InlineCapacity, SizeT, Allocator>
+#define INLINE_TRIVIAL_VECTOR Attractadore::TrivialVectorNameSpace::InlineTrivialVector<T, InlineCapacity, Allocator>
 
 template<typename T, unsigned MinCapacity, size_t MinAlignSize>
 struct InlineStorage {
@@ -285,8 +294,7 @@ struct InlineStorage {
         (MinBufferSize / AlignSize + (MinBufferSize % AlignSize != 0)) * AlignSize;
     static constexpr unsigned Capacity      = BufferSize / sizeof(T);
 
-    static constexpr unsigned capacity = Capacity;
-    std::array<T, capacity> m_storage;
+    std::array<T, Capacity> m_storage;
 
     constexpr const T* data() const noexcept { return m_storage.data(); }
     constexpr T* data() noexcept { return m_storage.data(); }
@@ -294,7 +302,7 @@ struct InlineStorage {
 
 template<typename T, size_t MinAlignSize>
 struct InlineStorage<T, 0, MinAlignSize> {
-    static constexpr unsigned capacity = 0;
+    static constexpr unsigned Capacity = 0;
     constexpr std::nullptr_t data() const noexcept { return nullptr; }
 };
 
@@ -306,16 +314,19 @@ inline unsigned DefaultInlineCapacity = DefaultInlineBufferSize / sizeof(T);
 template<
     typename T,
     unsigned InlineCapacity = DefaultInlineCapacity<T>,
-    std::unsigned_integral SizeT = unsigned,
     typename Allocator = std::allocator<T>
 > requires std::is_trivial_v<T>
 class InlineTrivialVector:
-    public TrivialVectorHeader<T, SizeT, Allocator>,
-    private InlineStorage<T, InlineCapacity, alignof(TrivialVectorHeader<T, SizeT, Allocator>)>
+    public TrivialVectorHeader<T, Allocator>,
+    private InlineStorage<T, InlineCapacity, alignof(TrivialVectorHeader<T, Allocator>)>
 {
-    using Base = TrivialVectorHeader<T, SizeT, Allocator>;
+    using Base = TrivialVectorHeader<T, Allocator>;
+    friend Base;
     using Storage = InlineStorage<T, InlineCapacity, alignof(Base)>;
     using typename Base::AllocTraits;
+    using Base::m_data;
+    using Base::m_capacity;
+    using Base::m_size;
 
 public:
     using typename Base::value_type;
@@ -334,35 +345,46 @@ public:
     constexpr InlineTrivialVector() noexcept(noexcept(Allocator()));
     constexpr explicit InlineTrivialVector(Allocator alloc) noexcept;
     constexpr explicit InlineTrivialVector(size_type size, Allocator alloc = Allocator());
-    constexpr InlineTrivialVector(size_type count, const T& value, Allocator alloc = Allocator());
+    constexpr InlineTrivialVector(size_type count, const value_type& value, Allocator alloc = Allocator());
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
         requires std::convertible_to<std::iter_value_t<Iter>, value_type>
     constexpr InlineTrivialVector(Iter first, Sent last, Allocator alloc = Allocator());
     template<std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
     constexpr explicit InlineTrivialVector(R&& r, Allocator alloc = Allocator());
-    // TODO: conversions?
-    constexpr InlineTrivialVector(std::initializer_list<value_type> init, Allocator alloc = Allocator());
+
     constexpr InlineTrivialVector(const InlineTrivialVector& other);
-    constexpr InlineTrivialVector(const InlineTrivialVector& other, Allocator alloc);
+    template<unsigned OtherInlineCapacity, typename OtherAllocator>
+    constexpr InlineTrivialVector(
+        const InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>& other,
+        Allocator alloc = Allocator()
+    );
     constexpr InlineTrivialVector(InlineTrivialVector&& other) noexcept;
-    constexpr InlineTrivialVector(InlineTrivialVector&& other, Allocator alloc);
+    template<unsigned OtherInlineCapacity>
+    constexpr InlineTrivialVector(
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>&& other,
+        Allocator alloc = Allocator())
+    noexcept(OtherInlineCapacity <= InlineCapacity);
+    constexpr InlineTrivialVector(std::initializer_list<value_type> init);
+
     constexpr InlineTrivialVector& operator=(const InlineTrivialVector& other);
     constexpr InlineTrivialVector& operator=(InlineTrivialVector&& other) noexcept(
         AllocTraits::propagate_on_container_move_assignment::value or
         AllocTraits::is_always_equal::value
     );
-    template<std::ranges::input_range R>
-    constexpr InlineTrivialVector& operator=(R&& r);
     constexpr InlineTrivialVector& operator=(std::initializer_list<value_type> init);
-    constexpr ~InlineTrivialVector();
 
-    static constexpr size_type max_inline_size() noexcept { return Storage::capacity; }
+    static constexpr size_type max_inline_size() noexcept { return Storage::Capacity; }
 
 protected:
     constexpr const T* inline_data() const noexcept { return Storage::data(); }
     constexpr T* inline_data() noexcept { return Storage::data(); }
 };
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr TRIVIAL_VECTOR_HEADER::~TrivialVectorHeader() {
+    deallocate();
+}
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr auto TRIVIAL_VECTOR_HEADER::operator=(
@@ -377,11 +399,11 @@ constexpr auto TRIVIAL_VECTOR_HEADER::operator=(
             auto new_alloc = other.get_allocator();
             auto [new_data, new_capacity] = allocate_for_size(new_alloc, other.size());
             deallocate();
-            get_allocator() = std::move(new_alloc);
+            *this = std::move(new_alloc);
             m_data = new_data;
             m_capacity = new_capacity;
         } else {
-            get_allocator() = other.get_allocator();
+            *this = other.get_allocator();
         }
         std::ranges::copy(other, data());
         m_size = other.size();
@@ -405,7 +427,7 @@ constexpr auto TRIVIAL_VECTOR_HEADER::operator=(
         constexpr bool move_alloc = 
             AllocTraits::propagate_on_container_move_assignment;
         if constexpr(move_alloc) {
-            get_allocator() = std::move(other.get_allocator());
+            *this = std::move(static_cast<Allocator&>(other));
         }
         m_data = std::exchange(other.m_data, nullptr);
         m_size = std::exchange(other.m_size, 0);
@@ -471,7 +493,7 @@ constexpr void TRIVIAL_VECTOR_HEADER::write(Iter first, Sent last) noexcept {
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr void TRIVIAL_VECTOR_HEADER::fill(const value_type& value) noexcept {
-    std::ranges::fill(*this, value);
+    std::ranges::fill_n(data(), size(), value);
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
@@ -849,13 +871,35 @@ constexpr void TRIVIAL_VECTOR_HEADER::fit(size_type new_size) {
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::allocate_for_size(size_type new_size) -> AllocateResult {
+    try {
+        auto new_capacity = std::bit_ceil(new_size);
+        return { allocate(new_capacity), new_capacity };
+    } catch (std::bad_alloc&) {
+        return { allocate(new_size), new_size };
+    }
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::allocate(size_type new_capacity) -> pointer {
+    return AllocTraits::allocate(*this, new_capacity);
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr void TRIVIAL_VECTOR_HEADER::deallocate() noexcept {
+    if (data() != inline_data()) {
+        AllocTraits::deallocate(*this, data(), capacity());
+    }
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr auto TRIVIAL_VECTOR_HEADER::inline_data() const noexcept -> const T* {
-    return static_cast<const InlineTrivialVector<T, 1, SizeT, Allocator*>>(*this)->inline_data();
+    return static_cast<const InlineTrivialVector<T, 1, Allocator>*>(this)->inline_data();
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr auto TRIVIAL_VECTOR_HEADER::inline_data() noexcept -> T* {
-    return static_cast<const InlineTrivialVector<T, 1, SizeT, Allocator*>>(*this)->inline_data();
+    return static_cast<InlineTrivialVector<T, 1, Allocator>*>(this)->inline_data();
 }
 
 template<
@@ -891,10 +935,81 @@ template<
 ) {
     l.swap(r);
 }
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector() noexcept(noexcept(Allocator())):
+    Base{Allocator(), inline_data(), Storage::Capacity} {}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(Allocator alloc) noexcept:
+    Base{std::move(alloc), inline_data(), Storage::Capacity} {}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(size_type size, Allocator alloc):
+    InlineTrivialVector{std::move(alloc)}
+{
+    if (size > this->capacity()) {
+        auto [new_data, new_capacity] = this->allocate_for_size(size);
+        m_data = new_data;
+        m_capacity = new_capacity;
+    }
+    m_size = size;
+}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
+    size_type size, const value_type& value, Allocator alloc
+): InlineTrivialVector{size, std::move(alloc)}
+{
+    this->fill(value);
+}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
+    requires std::convertible_to<
+        std::iter_value_t<Iter>,
+        typename INLINE_TRIVIAL_VECTOR::value_type>
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
+    Iter first, Sent last, Allocator alloc
+): InlineTrivialVector{std::move(alloc)}
+{
+    this->assign(first, last);
+}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+template<std::ranges::input_range R>
+    requires std::convertible_to<
+        std::ranges::range_value_t<R>,
+        typename INLINE_TRIVIAL_VECTOR::value_type>
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
+    R&& r, Allocator alloc
+): InlineTrivialVector{std::move(alloc)} {
+    this->assign(r);
+}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
+    const InlineTrivialVector& other
+): InlineTrivialVector<T, InlineCapacity, Allocator>(other) {}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+template<unsigned OtherInlineCapacity, typename OtherAllocator>
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
+    const InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>& other,
+    Allocator alloc
+): InlineTrivialVector{std::move(alloc)} {
+    assign(other);
+}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
+    InlineTrivialVector&& other
+) noexcept: InlineTrivialVector<T, InlineCapacity, Allocator>(std::move(other)) {}
+
 }
 
 namespace std {
-template<typename T, std::unsigned_integral SizeT, typename Allocator, typename U>
+template<typename T, typename Allocator, typename U>
 constexpr TRIVIAL_VECTOR_HEADER::size_type erase(TRIVIAL_VECTOR_HEADER& vec, const U& value) {
     auto old_size = vec.size();
     auto new_size = std::ranges::remove(vec, value).size();
@@ -902,11 +1017,19 @@ constexpr TRIVIAL_VECTOR_HEADER::size_type erase(TRIVIAL_VECTOR_HEADER& vec, con
     return old_size - new_size;
 }
 
-template<typename T, std::unsigned_integral SizeT, typename Allocator, typename Pred>
+template<typename T, typename Allocator, typename Pred>
 constexpr TRIVIAL_VECTOR_HEADER::size_type erase_if(TRIVIAL_VECTOR_HEADER& vec, Pred pred) {
     auto old_size = vec.size();
     auto new_size = std::ranges::remove_if(vec, std::move(pred)).size();
     vec.adjust(new_size);
     return old_size - new_size;
 }
+}
+
+namespace Attractadore {
+using TrivialVectorNameSpace::InlineTrivialVector;
+template<
+    typename T,
+    typename Allocator = std::allocator<T>
+> using TrivialVector = InlineTrivialVector<T, 0, Allocator>;
 }
