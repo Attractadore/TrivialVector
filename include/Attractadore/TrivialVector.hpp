@@ -162,6 +162,20 @@ public:
     ) { return insert(pos, init.begin(), init.end()); }
     constexpr iterator emplace(const_iterator pos);
     constexpr iterator emplace(const_iterator pos, const value_type& value) { return insert(pos, value); }
+
+    constexpr iterator add(const_iterator pos) noexcept;
+    constexpr iterator add(const_iterator pos, const value_type& value) noexcept;
+    constexpr iterator add(const_iterator pos, size_type count, const value_type& value) noexcept;
+    template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
+        requires std::convertible_to<std::iter_value_t<Iter>, value_type>
+    constexpr iterator add(const_iterator pos, Iter first, Sent last) noexcept;
+    template<std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+    constexpr iterator add(const_iterator pos, R&& r) noexcept;
+    constexpr iterator add(
+        const_iterator pos, std::initializer_list<value_type> init
+    ) noexcept { return add(pos, init.begin(), init.end()); }
+
     constexpr iterator erase(const_iterator pos) noexcept;
     constexpr iterator erase(const_iterator first, const_iterator last) noexcept;
     template<typename R> requires
@@ -169,17 +183,56 @@ public:
         std::ranges::common_range<R> and
         std::convertible_to<std::ranges::iterator_t<R>, const_iterator>
     constexpr iterator erase(R&& r) noexcept { return erase(std::ranges::begin(r), std::ranges::end(r)); }
-    constexpr void push_back(const value_type& value);
+
+    constexpr void push_back(const value_type& value) { emplace_back() = value; }
+    constexpr iterator append(size_type count, const value_type& value) {
+        return insert(end(), count, value);
+    }
+    template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
+        requires std::convertible_to<std::iter_value_t<Iter>, value_type>
+    constexpr iterator append(Iter first, Sent last) {
+        return insert(end(), first, last);
+    }
+    template<std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+    constexpr iterator append(R&& r) {
+        return insert(end(), r);
+    }
+    constexpr iterator append(std::initializer_list<value_type> init) {
+        return insert(end(), init);
+    }
     constexpr reference emplace_back();
-    constexpr reference emplace_back(const value_type& value);
+    constexpr reference emplace_back(const value_type& value) { return emplace_back() = value; }
+
+    constexpr reference write_back() noexcept;
+    constexpr reference write_back(const value_type& value) noexcept { return write_back() = value; }
+    constexpr iterator add_back(size_type count, const value_type& value) noexcept {
+        return add(end(), count, value);
+    }
+    template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
+        requires std::convertible_to<std::iter_value_t<Iter>, value_type>
+    constexpr iterator add_back(Iter first, Sent last) noexcept {
+        return add(end(), first, last);
+    }
+    template<std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+    constexpr iterator add_back(R&& r) noexcept {
+        return add(end(), r);
+    }
+    constexpr iterator add_back(std::initializer_list<value_type> init) noexcept {
+        return add(end(), init);
+    }
+
     constexpr void pop_back() noexcept;
+    constexpr value_type pop() noexcept;
+
     constexpr void resize(size_type new_size);
     constexpr void resize(size_type new_size, const value_type& value);
     template<typename R> requires
         std::ranges::contiguous_range<R> and
         std::ranges::common_range<R> and
         std::convertible_to<std::ranges::iterator_t<R>, const_iterator>
-    constexpr void resize(R&& r);
+    constexpr void resize(R&& r) noexcept;
     constexpr void adjust(size_type new_size) noexcept;
     constexpr void fit(size_type new_size);
     template<typename OtherAllocator>
@@ -204,7 +257,13 @@ protected:
     constexpr T* inline_data() noexcept;
 
     template<typename F>
-    constexpr iterator do_sized_insert(const_iterator pos, size_t count, F copy);
+    constexpr iterator do_sized_insert(const_iterator pos, size_t count, F do_assign);
+
+    template<typename F>
+    constexpr iterator do_sized_add(const_iterator pos, size_t count, F do_assign) noexcept;
+
+    template<typename F>
+    constexpr iterator do_sized_realloc_insert(const_iterator pos, size_t count, F do_assign);
 };
 
 template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
@@ -462,9 +521,11 @@ TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr auto TRIVIAL_VECTOR_HEADER::insert(
     const_iterator pos, size_type count, const value_type& value
 ) -> iterator {
-    return do_sized_insert(pos, count,
-        [&](auto it) { return std::ranges::fill_n(it, count, value).out; }
-    );
+    if (count) {
+        return do_sized_insert(pos, count,
+            [&](auto it) { return std::ranges::fill_n(it, count, value).out; }
+        );
+    }
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
@@ -475,9 +536,11 @@ constexpr auto TRIVIAL_VECTOR_HEADER::insert(
 ) -> iterator {
     if constexpr (std::sized_sentinel_for<Sent, Iter>) {
         auto count = std::ranges::distance(first, last);
-        return do_sized_insert(pos, count,
-            [&] (auto it) { return std::ranges::copy(first, last, it).out; }
-        );
+        if (count) {
+            return do_sized_insert(pos, count,
+                [&] (auto it) { return std::ranges::copy(first, last, it).out; }
+            );
+        }
     } else {
         auto idx = std::ranges::distance(begin(), pos);
         // Copy as much of the range as possible into available storage
@@ -492,6 +555,8 @@ constexpr auto TRIVIAL_VECTOR_HEADER::insert(
             if (it != insert_end) {
                 auto new_end = std::ranges::copy(insert_end, cap_end, it);
                 m_size = std::ranges::distance(data(), new_end);
+            } else {
+                m_size = capacity();
             }
             return iterator{insert_begin};
         } else {
@@ -529,9 +594,11 @@ constexpr auto TRIVIAL_VECTOR_HEADER::insert(
 ) -> iterator {
     if constexpr (std::ranges::sized_range<R>) {
         auto count = std::ranges::size(r);
-        return do_sized_insert(pos, count,
-            [&] (auto it) { return std::ranges::copy(r, it).out; }
-        );
+        if (count) {
+            return do_sized_insert(pos, count,
+                [&] (auto it) { return std::ranges::copy(r, it).out; }
+            );
+        }
     } else {
         return insert(std::ranges::begin(r), std::ranges::end(r));
     }
@@ -541,7 +608,86 @@ TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr auto TRIVIAL_VECTOR_HEADER::emplace(
     const_iterator pos
 ) -> iterator {
-    return do_sized_insert(pos, 1, [&](auto it) { return ++it; });
+    return do_sized_insert(pos, 1, [](auto it) { return ++it; });
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::add(
+    const_iterator pos
+) noexcept -> iterator {
+    return do_sized_add(pos, 1, [](auto it) { return ++it; });
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::add(
+    const_iterator pos, const value_type& value
+) noexcept -> iterator {
+    return do_sized_add(pos, 1,
+        [&](auto it) {
+            *it = value;
+            return ++it;
+        }
+    );
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::add(
+    const_iterator pos, size_type count, const value_type& value
+) noexcept -> iterator {
+    if (count) {
+        return do_sized_add(pos, count,
+            [&](auto it) { return std::ranges::fill_n(it, count, value).out; }
+        );
+    }
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
+    requires std::convertible_to<std::iter_value_t<Iter>, typename TRIVIAL_VECTOR_HEADER::value_type>
+constexpr auto TRIVIAL_VECTOR_HEADER::add(
+    const_iterator pos, Iter first, Sent last
+) noexcept -> iterator {
+    if constexpr (std::sized_sentinel_for<Sent, Iter>) {
+        auto count = std::ranges::distance(first, last);
+        if (count) {
+            return do_sized_add(pos, count,
+                [&] (auto it) { return std::ranges::copy(first, last, it).out; }
+            );
+        }
+    } else {
+        auto idx = std::ranges::distance(begin(), pos);
+        auto cap_end = data() + capacity();
+        auto insert_begin = data() + idx;
+        auto insert_end = std::ranges::copy_backward(insert_begin, end(), cap_end).out;
+        auto it = std::ranges::copy(first, last, insert_begin).out;
+        assert(it <= insert_end);
+        // If all available space was used, there is no need to shift elements
+        if (it != insert_end) {
+            auto new_end = std::ranges::copy(insert_end, cap_end, it);
+            m_size = std::ranges::distance(data(), new_end);
+        } else {
+            m_size = capacity();
+        }
+        return iterator{insert_begin};
+    }
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+template<std::ranges::input_range R>
+    requires std::convertible_to<std::ranges::range_value_t<R>, typename TRIVIAL_VECTOR_HEADER::value_type>
+constexpr auto TRIVIAL_VECTOR_HEADER::add(
+    const_iterator pos, R&& r
+) noexcept -> iterator {
+    if constexpr (std::ranges::sized_range<R>) {
+        auto count = std::ranges::size(r);
+        if (count) {
+            return do_sized_add(pos, count,
+                [&] (auto it) { return std::ranges::copy(r, it).out; }
+            );
+        }
+    } else {
+        return add(std::ranges::begin(r), std::ranges::end(r));
+    }
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
@@ -550,26 +696,49 @@ constexpr auto TRIVIAL_VECTOR_HEADER::do_sized_insert(
     const_iterator pos, size_type count, AssignF do_assign
 ) -> iterator {
     assert(count);
+    auto new_size = size() + count;
+    [[likely]]
+    if (new_size <= capacity()) {
+        return do_sized_add(pos, count, std::move(do_assign));
+    } else {
+        return do_sized_realloc_insert(pos, count, std::move(do_assign));
+    };
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+template<typename AssignF>
+constexpr auto TRIVIAL_VECTOR_HEADER::do_sized_add(
+    const_iterator pos, size_type count, AssignF do_assign
+) noexcept -> iterator {
+    assert(count);
     auto idx = std::ranges::distance(begin(), pos);
     auto new_size = size() + count;
-    if (new_size > capacity()) {
-        auto [new_data, new_capacity] = allocate_for_size(new_size);
-        auto assign_begin = std::ranges::copy(begin(), pos, new_data).out;
-        auto assign_end = do_assign(assign_begin);
-        std::ranges::copy(pos, end(), assign_end);
-        deallocate();
-        m_data = new_data;
-        m_capacity = new_capacity;
-        m_size = new_size;
-        return iterator{assign_begin};
-    } else {
-        auto assign_begin = begin() + idx;
-        auto assign_end = assign_begin + count;
-        m_size = new_size;
-        std::ranges::copy_backward(assign_begin, assign_end, end());
-        do_assign(assign_begin);
-        return assign_begin;
-    }
+    assert(new_size <= capacity());
+    auto assign_begin = begin() + idx;
+    auto assign_end = assign_begin + count;
+    m_size = new_size;
+    std::ranges::copy_backward(assign_begin, assign_end, end());
+    do_assign(assign_begin);
+    return assign_begin;
+}
+
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+template<typename AssignF>
+constexpr auto TRIVIAL_VECTOR_HEADER::do_sized_realloc_insert(
+    const_iterator pos, size_type count, AssignF do_assign
+) -> iterator {
+    assert(count);
+    auto new_size = size() + count;
+    auto [new_data, new_capacity] = allocate_for_size(new_size);
+    auto assign_begin = std::ranges::copy(begin(), pos, new_data).out;
+    auto assign_end = do_assign(assign_begin);
+    std::ranges::copy(pos, end(), assign_end);
+    deallocate();
+    m_data = new_data;
+    m_capacity = new_capacity;
+    m_size = new_size;
+    return iterator{assign_begin};
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
@@ -598,6 +767,85 @@ constexpr auto TRIVIAL_VECTOR_HEADER::erase(
         m_size -= count;
     }
     return it;
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::emplace_back() -> reference {
+    [[likely]]
+    if (size() < capacity()) {
+        return data()[m_size++];
+    } else {
+        auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
+        std::ranges::copy_n(data(), size(), new_data);
+        m_data = new_data;
+        m_capacity = new_capacity;
+        return data()[m_size++];
+    }
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::write_back() noexcept -> reference {
+    return data()[m_size++];
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr void TRIVIAL_VECTOR_HEADER::pop_back() noexcept {
+    m_size--;
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto TRIVIAL_VECTOR_HEADER::pop() noexcept -> value_type {
+    return data()[--m_size];
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr void TRIVIAL_VECTOR_HEADER::resize(size_type new_size) {
+    if (capacity() < new_size) {
+        auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
+        std::ranges::copy_n(data(), size(), new_data);
+        m_data = new_data;
+        m_capacity = new_capacity;
+    }
+    m_size = new_size;
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr void TRIVIAL_VECTOR_HEADER::resize(size_type new_size, const value_type& value) {
+    auto old_size = size();
+    resize(new_size);
+    auto idx = std::min(old_size, new_size);
+    std::ranges::fill(data() + idx, data() + new_size, value);
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+template<typename R> requires
+    std::ranges::contiguous_range<R> and
+    std::ranges::common_range<R> and
+    std::convertible_to<
+        std::ranges::iterator_t<R>,
+        typename TRIVIAL_VECTOR_HEADER::const_iterator>
+constexpr void TRIVIAL_VECTOR_HEADER::resize(R&& r) noexcept {
+    assert(r.begin() >= begin() and r.end() <= end());
+    if (r.begin() != begin()) {
+        std::ranges::copy(r, begin());
+    }
+    m_size = r.size();
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr void TRIVIAL_VECTOR_HEADER::adjust(size_type new_size) noexcept {
+    assert(new_size <= capacity());
+    m_size = new_size;
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr void TRIVIAL_VECTOR_HEADER::fit(size_type new_size) {
+    if (capacity() < new_size) {
+        auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
+        m_data = new_data;
+        m_capacity = new_capacity;
+    }
+    m_size = new_size;
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
