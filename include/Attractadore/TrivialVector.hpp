@@ -275,12 +275,6 @@ protected:
     constexpr iterator do_sized_realloc_insert(const_iterator pos, size_t count, F do_assign);
 };
 
-template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-TrivialVectorHeader(Iter first, Sent last) -> TrivialVectorHeader<std::iter_value_t<Iter>>;
-
-template<std::ranges::input_range R>
-TrivialVectorHeader(R&& r) -> TrivialVectorHeader<std::ranges::range_value_t<R>>;
-
 #define INLINE_TRIVIAL_VECTOR_TEMPLATE \
 template<typename T, unsigned InlineCapacity, typename Allocator> \
     requires std::is_trivial_v<T>
@@ -328,6 +322,8 @@ class InlineTrivialVector:
     using Base::m_capacity;
     using Base::m_size;
 
+    static constexpr struct ConstructorTag {} constructor_tag {};
+
 public:
     using typename Base::value_type;
     using typename Base::allocator_type;
@@ -353,18 +349,47 @@ public:
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
     constexpr explicit InlineTrivialVector(R&& r, Allocator alloc = Allocator());
 
-    constexpr InlineTrivialVector(const InlineTrivialVector& other);
+private:
+    template<unsigned OtherInlineCapacity, typename OtherAllocator>
+    constexpr InlineTrivialVector(
+        ConstructorTag,
+        const InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>& other,
+        Allocator alloc = Allocator()
+    ): InlineTrivialVector{std::move(alloc)} {
+        this->assign(other);
+    }
+
+public:
+    constexpr InlineTrivialVector(const InlineTrivialVector& other):
+        InlineTrivialVector(constructor_tag, other) {}
+
     template<unsigned OtherInlineCapacity, typename OtherAllocator>
     constexpr InlineTrivialVector(
         const InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>& other,
         Allocator alloc = Allocator()
-    );
-    constexpr InlineTrivialVector(InlineTrivialVector&& other) noexcept;
+    ): InlineTrivialVector(constructor_tag, other, std::move(alloc)) {}
+
+private:
+    template<unsigned OtherInlineCapacity, typename OtherAllocator>
+    constexpr InlineTrivialVector(
+        ConstructorTag,
+        InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>&& other,
+        Allocator alloc = Allocator()
+    ) noexcept(OtherInlineCapacity <= InlineCapacity);
+
+public:
+    constexpr InlineTrivialVector(
+        InlineTrivialVector&& other
+    ) noexcept: InlineTrivialVector(constructor_tag, std::move(other)) {}
+
     template<unsigned OtherInlineCapacity>
     constexpr InlineTrivialVector(
         InlineTrivialVector<T, OtherInlineCapacity, Allocator>&& other,
         Allocator alloc = Allocator())
-    noexcept(OtherInlineCapacity <= InlineCapacity);
+    noexcept(
+        noexcept(InlineTrivialVector(constructor_tag, std::move(other), std::move(alloc)))
+    ): InlineTrivialVector(constructor_tag, std::move(other), std::move(alloc)) {}
+
     constexpr InlineTrivialVector(std::initializer_list<value_type> init);
 
     constexpr InlineTrivialVector& operator=(const InlineTrivialVector& other);
@@ -986,26 +1011,6 @@ constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
 ): InlineTrivialVector{std::move(alloc)} {
     this->assign(r);
 }
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
-    const InlineTrivialVector& other
-): InlineTrivialVector<T, InlineCapacity, Allocator>(other) {}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-template<unsigned OtherInlineCapacity, typename OtherAllocator>
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
-    const InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>& other,
-    Allocator alloc
-): InlineTrivialVector{std::move(alloc)} {
-    assign(other);
-}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
-    InlineTrivialVector&& other
-) noexcept: InlineTrivialVector<T, InlineCapacity, Allocator>(std::move(other)) {}
-
 }
 
 namespace std {

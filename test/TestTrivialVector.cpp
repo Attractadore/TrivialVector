@@ -4,6 +4,7 @@
 
 #include <list>
 
+using Attractadore::InlineTrivialVector;
 using Attractadore::TrivialVector;
 
 TEST(TestConstruct, Default) {
@@ -74,4 +75,27 @@ TEST(TestConstruct, FromSizedRange) {
     EXPECT_FALSE(vec.empty());
     EXPECT_EQ(vec.size(), arr.size());
     EXPECT_TRUE(std::ranges::equal(vec, arr));
+}
+
+TEST(TestConstruct, CopyConstruct) {
+    std::array arr = {1, 2, 3, 4, 5};
+    TrivialVector<int> vec(arr);
+    auto vec2 = vec;
+    EXPECT_EQ(vec.size(), vec2.size());
+    EXPECT_TRUE(std::ranges::equal(vec, vec2));
+}
+
+TEST(TestConstruct, ExtendedCopyConstruct) {
+    std::array arr = {1, 2, 3, 4, 5};
+    {
+        InlineTrivialVector<int, 5> vec(arr);
+        TrivialVector<int> vec2 = vec;
+        EXPECT_EQ(vec.size(), vec2.size());
+        EXPECT_TRUE(std::ranges::equal(vec, vec2));
+    } {
+        TrivialVector<int> vec(arr);
+        InlineTrivialVector<int, 3> vec2 = vec;
+        EXPECT_EQ(vec.size(), vec2.size());
+        EXPECT_TRUE(std::ranges::equal(vec, vec2));
+    }
 }
