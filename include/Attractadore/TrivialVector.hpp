@@ -23,15 +23,20 @@ class VectorIterator: std::contiguous_iterator_tag {
     using ConstPtr = typename std::pointer_traits<Ptr>::rebind<const Element>;
 };
 
+template<typename T, typename Allocator>
+concept TrivialVectorHeaderConcept =
+    std::is_trivial_v<T> and
+    std::same_as<typename Allocator::value_type, T>;
+
 #define TRIVIAL_VECTOR_HEADER_TEMPLATE \
 template<typename T, typename Allocator> \
-    requires std::is_trivial_v<T>
+    requires Attractadore::TrivialVectorNameSpace::TrivialVectorHeaderConcept<T, Allocator>
 #define TRIVIAL_VECTOR_HEADER Attractadore::TrivialVectorNameSpace::TrivialVectorHeader<T, Allocator>
 
 template<
     typename T,
     typename Allocator = std::allocator<T>
-> requires std::is_trivial_v<T>
+> requires TrivialVectorHeaderConcept<T, Allocator>
 class TrivialVectorHeader: private Allocator {
 protected:
     using AllocTraits = std::allocator_traits<Allocator>;
@@ -69,37 +74,248 @@ protected:
         Allocator{std::move(alloc)}, m_data{data_init}, m_capacity(capacity) {
         assert(capacity <= max_size());
     }
-    constexpr TrivialVectorHeader(const TrivialVectorHeader&) = delete;
-    constexpr TrivialVectorHeader(TrivialVectorHeader&&) = delete;
     constexpr ~TrivialVectorHeader();
 
+    template<bool propagate, bool move_alloc_on_propagate>
+    constexpr TrivialVectorHeader& do_copy_assign(
+        std::conditional_t<move_alloc_on_propagate,
+            TrivialVectorHeader&&,
+            const TrivialVectorHeader&
+        > other
+    ) {
+        if constexpr (propagate) {
+            if (not allocators_equal(other)) {
+                bool must_realloc = not data_is_inlined() or capacity() < other.size();
+                if (must_realloc) {
+                    auto [new_data, new_capacity] = other.allocate_for_size(other.size());
+                    deallocate();
+                    m_data = new_data;
+                    m_capacity = new_capacity;
+                }
+                if constexpr (move_alloc_on_propagate) {
+                    allocator() = std::move(other.allocator());
+                } else {
+                    allocator() = other.get_allocator();
+                }
+                write(other);
+            } else {
+                assign(other);
+            }
+        } else {
+            assign(other);
+        }
+        return *this;
+    }
+
+    template<bool propagate>
+    constexpr TrivialVectorHeader& do_move_assign(
+        TrivialVectorHeader&& other, size_type other_clear_capacity
+    ) {
+        deallocate();
+        if constexpr (propagate) {
+            allocator() = std::move(other.allocator());
+        }
+        m_data      = other.m_data;
+        m_capacity  = other.m_capacity;
+        m_size      = other.m_size;
+        other.m_data        = other.inline_data();
+        other.m_capacity    = other_clear_capacity;
+        other.m_size        = 0;
+        return *this;
+    }
+
+    constexpr TrivialVectorHeader& do_operator_move(
+        TrivialVectorHeader&& other, size_type other_clear_capacity = 0
+    ) {
+        constexpr bool propagate =
+            AllocTraits::propagate_on_container_move_assignment::value;
+
+        bool can_move = [&] {
+            if constexpr (propagate) {
+                return not other.data_is_inlined();
+            } else {
+                return allocators_equal(other) and not other.data_is_inlined();
+            }
+        } ();
+
+        if (can_move) {
+            do_move_assign<propagate>(std::move(other), other_clear_capacity);
+        } else {
+            constexpr bool move_alloc_on_propagate = true;
+            do_copy_assign<propagate, move_alloc_on_propagate>(std::move(other));
+            other.clear();
+        }
+
+        return *this;
+    }
+
 public:
-    constexpr TrivialVectorHeader& operator=(const TrivialVectorHeader& other);
-    constexpr TrivialVectorHeader& operator=(TrivialVectorHeader&& other);
-    constexpr TrivialVectorHeader& operator=(std::initializer_list<value_type> init);
+    constexpr TrivialVectorHeader& operator=(const TrivialVectorHeader& other) {
+        constexpr bool propagate =
+            AllocTraits::propagate_on_container_copy_assignment::value;
+        return do_copy_assign<propagate, false>(other);
+    }
+
+    constexpr TrivialVectorHeader& operator=(TrivialVectorHeader&& other) {
+        return do_operator_move(std::move(other));
+    }
+
+    constexpr TrivialVectorHeader& operator=(std::initializer_list<value_type> init) {
+        assign(init);
+        return *this;
+    }
+
+protected:
+    static constexpr void pointer_swap(
+        TrivialVectorHeader& lhs, TrivialVectorHeader& rhs
+    ) noexcept {
+        std::ranges::swap(lhs.m_data, rhs.m_data);
+        std::ranges::swap(lhs.m_capacity, rhs.m_capacity);
+    }
+        
+    static constexpr void copy_swap(
+        TrivialVectorHeader& lhs, TrivialVectorHeader& rhs,
+        size_type swap_size 
+    ) noexcept {
+        std::ranges::swap_ranges(
+            lhs.data(), lhs.data() + swap_size,  
+            rhs.data(), rhs.data() + swap_size);
+    };
+
+    template <unsigned swap_size>
+    static constexpr void copy_swap (
+        TrivialVectorHeader& lhs, TrivialVectorHeader& rhs
+    ) noexcept {
+        std::array<T, swap_size> tmp;
+        std::ranges::copy_n(lhs.data(), swap_size, tmp.data());
+        std::ranges::copy_n(rhs.data(), swap_size, lhs.data());
+        std::ranges::copy_n(tmp.data(), swap_size, rhs.data());
+    };
+
+    static constexpr void inline_swap(
+        TrivialVectorHeader& lhs, TrivialVectorHeader& rhs
+    ) {
+        auto common_inline_size =
+            std::min(lhs.capacity(), rhs.capacity());
+        bool can_copy_swap =
+            lhs.size() <= common_inline_size and
+            rhs.size() <= common_inline_size;
+        if (can_copy_swap) {
+            copy_swap(lhs, rhs, common_inline_size);
+        } else { 
+            inline_reserve_swap(lhs, rhs);
+        }
+    }
+
+    static constexpr void inline_reserve_swap(
+        TrivialVectorHeader& lhs, TrivialVectorHeader& rhs
+    ) {
+        constexpr bool propagate =
+            AllocTraits::propagate_on_container_swap::value;
+        if (not propagate or lhs.allocators_equal(rhs)) {
+            auto common_size = std::max(lhs.size(), rhs.size());
+            lhs.reserve(common_size);
+            rhs.reserve(common_size);
+            copy_swap(lhs, rhs, common_size);
+        } else {
+            lhs.reserve_on_heap(lhs.size());
+            rhs.reserve_on_heap(rhs.size());
+            pointer_swap(lhs, rhs);
+        }
+    }
+
+    static constexpr void inline_heap_swap(
+        TrivialVectorHeader& inl, TrivialVectorHeader& heap
+    ) {
+        assert(inl.data_is_inlined());
+        assert(not heap.data_is_inlined());
+        constexpr bool propagate =
+            AllocTraits::propagate_on_container_swap::value;
+        auto common_size = std::max(inl.size(), heap.size());
+        bool can_copy_swap =
+            (not propagate or inl.allocators_equal(heap)) and
+            inl.capacity() >= common_size and
+            heap.capacity() >= common_size;
+        if (can_copy_swap) {
+            copy_swap(inl, heap, common_size);
+        } else {
+            inl.reserve_on_heap(inl.size());
+            pointer_swap(inl, heap);
+        }
+    };
+
+    static constexpr void swap_common(
+        TrivialVectorHeader& lhs, TrivialVectorHeader& rhs
+    ) noexcept {
+        constexpr bool propagate =
+            AllocTraits::propagate_on_container_swap::value;
+        assert(propagate or lhs.allocators_equal(rhs));
+        if constexpr (propagate) {
+            std::ranges::swap(lhs.allocator(), rhs.allocator());
+        }
+        std::ranges::swap(lhs.m_size, rhs.m_size);
+    }
+
+    template<auto InlineSwap, auto InlineHeapSwap>
+    static constexpr void swap_impl(auto& lhs, auto& rhs) noexcept (
+        noexcept(InlineSwap(lhs, rhs)) and
+        noexcept(InlineHeapSwap(lhs, rhs))
+    ) {
+        if (not lhs.data_is_inlined() and not rhs.data_is_inlined()) {
+            pointer_swap(lhs, rhs);
+        } else if (lhs.data_is_inlined() and rhs.data_is_inlined()) {
+            InlineSwap(lhs, rhs);
+        } else if (lhs.data_is_inlined()) {
+            InlineHeapSwap(lhs, rhs);
+        } else if (rhs.data_is_inlined()) {
+            InlineHeapSwap(rhs, lhs);
+        }
+        swap_common(lhs, rhs);
+    }
+
+public:
+    constexpr void swap(TrivialVectorHeader& other) noexcept (
+        noexcept(swap_impl<inline_swap, inline_heap_swap>(other))
+    ) {
+        swap_impl<inline_swap, inline_heap_swap>(other);
+    }
 
     constexpr void assign(size_type count, const value_type& value) {
         fit(count);
         fill(value);
     }
+
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
         requires std::convertible_to<std::iter_value_t<Iter>, value_type>
     constexpr void assign(Iter first, Sent last);
+
     template<std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
     constexpr void assign(R&& r);
-    constexpr void assign(std::initializer_list<value_type> init) { assign(init.begin(), init.end()); }
+
+    constexpr void assign(std::initializer_list<value_type> init) {
+        assign(init.begin(), init.end());
+    }
 
     constexpr void write(size_t count, const value_type& value) noexcept {
         adjust(count);
         fill(value);
     }
+
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
         requires std::convertible_to<std::iter_value_t<Iter>, value_type>
     constexpr void write(Iter first, Sent last) noexcept;
     template<std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    constexpr void write(R&& r) noexcept { write(std::ranges::begin(r), std::ranges::end(r)); }
+    constexpr void write(R&& r) noexcept {
+        if constexpr (std::ranges::sized_range<R>) {
+            auto new_size = std::ranges::size(r);
+            adjust(new_size);
+            std::ranges::copy(r, data());
+        } else {
+            write(std::ranges::begin(r), std::ranges::end(r));
+        }
+    }
     constexpr void write(std::initializer_list<value_type> init) noexcept { write(init.begin(), init.end()); }
 
     constexpr void fill(const value_type& value) noexcept;
@@ -155,7 +371,15 @@ public:
             std::numeric_limits<SizeT>::max(),
             std::numeric_limits<size_type>::max() / sizeof(value_type));
     }
+
     constexpr void reserve(size_type new_capacity);
+
+    constexpr void reserve_on_heap(size_type new_capacity) {
+        if (new_capacity > capacity() or data_is_inlined()) {
+            reallocate(new_capacity);
+        }
+    }
+
     constexpr size_type capacity() const noexcept { return m_capacity; }
     constexpr void shrink_to_fit() noexcept;
     constexpr void clear() noexcept;
@@ -246,10 +470,6 @@ public:
     constexpr void resize(R&& r) noexcept;
     constexpr void adjust(size_type new_size) noexcept;
     constexpr void fit(size_type new_size);
-    template<typename OtherAllocator>
-    constexpr void swap(TrivialVectorHeader<T, OtherAllocator>& other) noexcept(
-        false // TODO
-    );
 
 protected:
     struct AllocateResult {
@@ -257,13 +477,54 @@ protected:
         size_type   n;
     };
 
-    constexpr AllocateResult allocate_for_size(size_t new_size);
-    constexpr pointer allocate(size_t new_capacity);
+    constexpr Allocator& allocator() noexcept {
+        return *this;
+    }
+
+    constexpr bool allocators_equal(
+        const TrivialVectorHeader& other
+    ) const noexcept {
+        return
+            AllocTraits::is_always_equal::value or
+            get_allocator() == other.get_allocator();
+    }
+
+    static constexpr AllocateResult allocate_for_size(
+        Allocator& alloc, size_t new_size
+    ) {
+        try {
+            auto new_capacity = std::bit_ceil(new_size);
+            return { allocate(alloc, new_capacity), new_capacity };
+        } catch (std::bad_alloc&) {
+            return { allocate(alloc, new_size), new_size };
+        }
+    }
+
+    constexpr AllocateResult allocate_for_size(size_t new_size) {
+        return allocate_for_size(allocator(), new_size);
+    }
+
+    static constexpr pointer allocate(Allocator& alloc, size_t new_capacity) {
+        return AllocTraits::allocate(alloc, new_capacity);
+    }
+
+    constexpr pointer allocate(size_t new_capacity) {
+        return allocate(allocator(), new_capacity);
+    }
+
     constexpr void reallocate(size_t new_capacity);
-    constexpr void deallocate() noexcept;
+
+    constexpr void deallocate() noexcept {
+        if (capacity() > 0 and not data_is_inlined()) {
+            AllocTraits::deallocate(*this, data(), capacity());
+        }
+    }
 
     constexpr const T* inline_data() const noexcept;
     constexpr T* inline_data() noexcept;
+    constexpr bool data_is_inlined() const noexcept {
+        return capacity() > 0 and data() == inline_data();
+    };
 
     template<typename F>
     constexpr iterator do_sized_insert(const_iterator pos, size_t count, F do_assign);
@@ -275,9 +536,12 @@ protected:
     constexpr iterator do_sized_realloc_insert(const_iterator pos, size_t count, F do_assign);
 };
 
+template<typename T, unsigned InlineCapacity, typename Allocator>
+concept InlineTrivialVectorConcept = TrivialVectorHeaderConcept<T, Allocator>;
+
 #define INLINE_TRIVIAL_VECTOR_TEMPLATE \
 template<typename T, unsigned InlineCapacity, typename Allocator> \
-    requires std::is_trivial_v<T>
+    requires Attractadore::TrivialVectorNameSpace::InlineTrivialVectorConcept<T, InlineCapacity, Allocator> 
 #define INLINE_TRIVIAL_VECTOR Attractadore::TrivialVectorNameSpace::InlineTrivialVector<T, InlineCapacity, Allocator>
 
 template<typename T, unsigned MinCapacity, size_t MinAlignSize>
@@ -290,14 +554,14 @@ struct InlineStorage {
 
     std::array<T, Capacity> m_storage;
 
-    constexpr const T* data() const noexcept { return m_storage.data(); }
-    constexpr T* data() noexcept { return m_storage.data(); }
+    constexpr const T* addr() const noexcept { return m_storage.data(); }
+    constexpr T* addr() noexcept { return m_storage.data(); }
 };
 
 template<typename T, size_t MinAlignSize>
 struct InlineStorage<T, 0, MinAlignSize> {
     static constexpr unsigned Capacity = 0;
-    constexpr std::nullptr_t data() const noexcept { return nullptr; }
+    constexpr std::nullptr_t addr() const noexcept { return nullptr; }
 };
 
 inline constexpr unsigned DefaultInlineBufferSize = 64;
@@ -309,11 +573,16 @@ template<
     typename T,
     unsigned InlineCapacity = DefaultInlineCapacity<T>,
     typename Allocator = std::allocator<T>
-> requires std::is_trivial_v<T>
+> requires InlineTrivialVectorConcept<T, InlineCapacity, Allocator>
 class InlineTrivialVector:
     public TrivialVectorHeader<T, Allocator>,
     private InlineStorage<T, InlineCapacity, alignof(TrivialVectorHeader<T, Allocator>)>
 {
+    template<typename OtherT,
+    unsigned OtherInlineCapacity,
+    typename OtherAllocator>
+    friend class InlineTrivialVector;
+
     using Base = TrivialVectorHeader<T, Allocator>;
     friend Base;
     using Storage = InlineStorage<T, InlineCapacity, alignof(Base)>;
@@ -338,143 +607,275 @@ public:
     using typename Base::reverse_iterator;
     using typename Base::const_reverse_iterator;
 
-    constexpr InlineTrivialVector() noexcept(noexcept(Allocator()));
-    constexpr explicit InlineTrivialVector(Allocator alloc) noexcept;
-    constexpr explicit InlineTrivialVector(size_type size, Allocator alloc = Allocator());
-    constexpr InlineTrivialVector(size_type count, const value_type& value, Allocator alloc = Allocator());
+    constexpr InlineTrivialVector() noexcept(noexcept(Allocator()))
+        requires std::default_initializable<Allocator>:
+        InlineTrivialVector(Allocator()) {}
+
+    constexpr explicit InlineTrivialVector(Allocator alloc) noexcept:
+        Base{std::move(alloc), inline_data(), max_inline_size()} {}
+
+    constexpr explicit InlineTrivialVector(size_type size)
+        requires std::default_initializable<Allocator>:
+        InlineTrivialVector(size, Allocator()) {}
+
+    constexpr InlineTrivialVector(size_type size, Allocator alloc):
+        InlineTrivialVector(std::move(alloc))
+    {
+        this->fit(size);
+    }
+
+    constexpr InlineTrivialVector(size_type count, const value_type& value)
+        requires std::default_initializable<Allocator>:
+        InlineTrivialVector(count, value, Allocator()) {}
+
+    constexpr InlineTrivialVector(size_type count, const value_type& value, Allocator alloc):
+        InlineTrivialVector(count, std::move(alloc))
+    {
+        this->fill(value);
+    }
+
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
         requires std::convertible_to<std::iter_value_t<Iter>, value_type>
-    constexpr InlineTrivialVector(Iter first, Sent last, Allocator alloc = Allocator());
+    constexpr InlineTrivialVector(Iter first, Sent last)
+        requires std::default_initializable<Allocator>:
+        InlineTrivialVector(first, last, Allocator()) {}
+
+    template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
+        requires std::convertible_to<std::iter_value_t<Iter>, value_type>
+    constexpr InlineTrivialVector(Iter first, Sent last, Allocator alloc):
+        InlineTrivialVector{std::move(alloc)}
+    {
+        this->assign(first, last);
+    }
+
     template<std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    constexpr explicit InlineTrivialVector(R&& r, Allocator alloc = Allocator());
+    constexpr explicit InlineTrivialVector(R&& r)
+        requires std::default_initializable<Allocator>:
+        InlineTrivialVector(r, Allocator()) {}
 
-private:
-    template<unsigned OtherInlineCapacity, typename OtherAllocator>
-    constexpr InlineTrivialVector(
-        ConstructorTag,
-        const InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>& other,
-        Allocator alloc = Allocator()
-    ): InlineTrivialVector{std::move(alloc)} {
+    template<std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+    constexpr InlineTrivialVector(R&& r, Allocator alloc):
+        InlineTrivialVector(std::move(alloc))
+    {
+        this->assign(r);
+    }
+
+    constexpr InlineTrivialVector(const InlineTrivialVector& other):
+        InlineTrivialVector(
+            AllocTraits::select_on_container_copy_construction(
+                other.get_allocator()))
+    {
         this->assign(other);
     }
 
-public:
-    constexpr InlineTrivialVector(const InlineTrivialVector& other):
-        InlineTrivialVector(constructor_tag, other) {}
-
-    template<unsigned OtherInlineCapacity, typename OtherAllocator>
+    template<unsigned OtherInlineCapacity>
     constexpr InlineTrivialVector(
-        const InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>& other,
-        Allocator alloc = Allocator()
-    ): InlineTrivialVector(constructor_tag, other, std::move(alloc)) {}
+        const InlineTrivialVector<T, OtherInlineCapacity, Allocator>& other
+    ): InlineTrivialVector(
+            AllocTraits::select_on_container_copy_construction(
+                other.get_allocator()))
+    {
+        this->assign(other);
+    }
 
 private:
-    template<unsigned OtherInlineCapacity, typename OtherAllocator>
-    constexpr InlineTrivialVector(
-        ConstructorTag,
-        InlineTrivialVector<T, OtherInlineCapacity, OtherAllocator>&& other,
-        Allocator alloc = Allocator()
-    ) noexcept(OtherInlineCapacity <= InlineCapacity);
+    template<unsigned OtherInlineCapacity>
+    constexpr void do_move_construct(
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>&& other
+    ) noexcept (
+        InlineTrivialVector::max_inline_size() >=
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>::max_inline_size()
+    ) {
+        bool can_move = not other.data_is_inlined();
+        if (can_move) {
+            m_data =
+                std::exchange(other.m_data, other.inline_data());
+            m_capacity =
+                std::exchange(other.m_capacity, other.max_inline_size());
+            m_size =
+                std::exchange(other.m_size, 0);
+        } else {
+            if constexpr (max_inline_size() >= other.max_inline_size()) {
+                this->write(other);
+            } else {
+                this->assign(other);
+            }
+            other.clear();
+        }
+    }
 
 public:
+    constexpr InlineTrivialVector(InlineTrivialVector&& other) noexcept:
+        InlineTrivialVector()
+    {
+        do_move_construct(std::move(other));
+    }
+
+    template<unsigned OtherInlineCapacity>
     constexpr InlineTrivialVector(
-        InlineTrivialVector&& other
-    ) noexcept: InlineTrivialVector(constructor_tag, std::move(other)) {}
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>&& other
+    ) noexcept(noexcept(do_move_construct(std::move(other)))):
+        InlineTrivialVector()
+    {
+        do_move_construct(std::move(other));
+    }
 
     template<unsigned OtherInlineCapacity>
     constexpr InlineTrivialVector(
         InlineTrivialVector<T, OtherInlineCapacity, Allocator>&& other,
-        Allocator alloc = Allocator())
-    noexcept(
-        noexcept(InlineTrivialVector(constructor_tag, std::move(other), std::move(alloc)))
-    ): InlineTrivialVector(constructor_tag, std::move(other), std::move(alloc)) {}
+        Allocator
+    ) noexcept(noexcept(InlineTrivialVector(std::move(other))))
+        requires (AllocTraits::is_always_equal::value):
+        InlineTrivialVector(std::move(other)) {}
 
-    constexpr InlineTrivialVector(std::initializer_list<value_type> init);
+    template<unsigned OtherInlineCapacity>
+    constexpr InlineTrivialVector(
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>&& other,
+        Allocator alloc
+    ): InlineTrivialVector(std::move(alloc)) {
+        if (this->allocators_equal(other)) {
+            do_move_construct(std::move(other));
+        } else {
+            this->assign(other);
+            other.clear();
+        }
+    }
 
-    constexpr InlineTrivialVector& operator=(const InlineTrivialVector& other);
-    constexpr InlineTrivialVector& operator=(InlineTrivialVector&& other) noexcept(
+    constexpr InlineTrivialVector(
+        std::initializer_list<value_type> init
+    ): InlineTrivialVector(init.begin(), init.end()) {}
+
+    constexpr InlineTrivialVector& operator=(
+        const InlineTrivialVector& other
+    ) = default;
+
+    template<unsigned OtherInlineCapacity>
+    constexpr InlineTrivialVector& operator=(
+        const InlineTrivialVector<T, OtherInlineCapacity, Allocator>& other
+    ) {
+        Base::operator=(other);
+        return *this;
+    }
+
+    constexpr InlineTrivialVector& operator=(
+        InlineTrivialVector&& other
+    ) noexcept(
         AllocTraits::propagate_on_container_move_assignment::value or
         AllocTraits::is_always_equal::value
-    );
-    constexpr InlineTrivialVector& operator=(std::initializer_list<value_type> init);
+    ) {
+        this->do_operator_move(std::move(other), other.max_inline_size());
+        return *this;
+    }
+
+    template<unsigned OtherInlineCapacity>
+    constexpr InlineTrivialVector& operator=(
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>&& other
+    ) noexcept(
+        InlineTrivialVector::max_inline_size() >=
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>::max_inline_size() and
+        (AllocTraits::propagate_on_container_move_assignment::value or
+         AllocTraits::is_always_equal::value)
+    ) {
+        this->do_operator_move(std::move(other), other.max_inline_size());
+        return *this;
+    }
+
+private:
+    struct InlineSwap {
+        template<unsigned LHSCapacity, unsigned RHSCapacity>
+        constexpr void operator() (
+            InlineTrivialVector<T, LHSCapacity, Allocator>& lhs,
+            InlineTrivialVector<T, RHSCapacity, Allocator>& rhs
+        ) const noexcept (
+            InlineTrivialVector<T, LHSCapacity, Allocator>::max_inline_size() ==
+            InlineTrivialVector<T, RHSCapacity, Allocator>::max_inline_size() or
+            noexcept(Base::inline_reserve_swap(lhs, rhs))
+        ) {
+            constexpr auto common_inline_size =
+                std::min(lhs.max_inline_size(), rhs.max_inline_size());
+            if constexpr (lhs.max_inline_size() == rhs.max_inline_size()) {
+                Base::template copy_swap<common_inline_size>(lhs, rhs);
+            } else {
+                bool can_copy_swap =
+                    lhs.size() <= common_inline_size and
+                    rhs.size() <= common_inline_size;
+                if (can_copy_swap) {
+                    Base::template copy_swap<common_inline_size>(lhs, rhs);
+                } else { 
+                    Base::inline_reserve_swap(lhs, rhs);
+                }
+            }
+        }
+    };
+
+    struct InlineHeapSwap {
+        template <unsigned LHSCapacity, unsigned RHSCapacity>
+        constexpr void operator() (
+            InlineTrivialVector<T, LHSCapacity, Allocator>& inl,
+            InlineTrivialVector<T, RHSCapacity, Allocator>& heap 
+        ) const noexcept (
+            InlineTrivialVector<T, LHSCapacity, Allocator>::max_inline_size() ==
+            InlineTrivialVector<T, RHSCapacity, Allocator>::max_inline_size() or
+            noexcept(Base::inline_heap_swap(inl, heap))
+        ) {
+            assert(inl.data_is_inlined());
+            assert(not heap.data_is_inlined());
+
+            auto hybrid_swap = [&inl, &heap] {
+                std::ranges::copy(inl, heap.inline_data());
+                inl.m_data = std::exchange(heap.m_data, heap.inline_data());
+                inl.m_capacity = std::exchange(heap.m_capacity, heap.max_inline_size());
+            };
+
+            if constexpr (inl.max_inline_size() == heap.max_inline_size()) {
+                hybrid_swap();
+            } else {
+                constexpr auto common_inline_size = std::min(
+                    inl.max_inline_size(), heap.max_inline_size());
+                if (inl.size() <= common_inline_size) {
+                    hybrid_swap();
+                } else {
+                    Base::inline_heap_swap(inl, heap);
+                }
+            }
+        }
+    };
+
+public:
+    template<unsigned OtherInlineCapacity>
+    constexpr void swap(
+        InlineTrivialVector<T, OtherInlineCapacity, Allocator>& other
+    ) noexcept (
+        noexcept(Base::template swap_impl<InlineSwap{}, InlineHeapSwap{}>(*this, other))
+    ) {
+        Base::template swap_impl<InlineSwap{}, InlineHeapSwap{}>(*this, other);
+    }
 
     static constexpr size_type max_inline_size() noexcept { return Storage::Capacity; }
 
 protected:
-    constexpr const T* inline_data() const noexcept { return Storage::data(); }
-    constexpr T* inline_data() noexcept { return Storage::data(); }
+    constexpr void deallocate() noexcept {
+        if (m_data != inline_data()) {
+            AllocTraits::deallocate(this->allocator(), m_data, m_capacity);
+            m_data = inline_data();
+            m_capacity = max_inline_size();
+        }
+    }
+
+    constexpr const T* inline_data() const noexcept {
+        return Storage::addr();
+    }
+
+    constexpr T* inline_data() noexcept {
+        return Storage::addr();
+    }
 };
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr TRIVIAL_VECTOR_HEADER::~TrivialVectorHeader() {
     deallocate();
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::operator=(
-    const TrivialVectorHeader& other
-) -> TrivialVectorHeader& {
-    bool copy_alloc =
-        AllocTraits::propagate_on_container_copy_assignment and
-        not AllocTraits::is_always_equal and
-        get_allocator() != other.get_allocator();
-    if (copy_alloc) {
-        if (capacity() < other.size()) {
-            auto new_alloc = other.get_allocator();
-            auto [new_data, new_capacity] = allocate_for_size(new_alloc, other.size());
-            deallocate();
-            *this = std::move(new_alloc);
-            m_data = new_data;
-            m_capacity = new_capacity;
-        } else {
-            *this = other.get_allocator();
-        }
-        std::ranges::copy(other, data());
-        m_size = other.size();
-    } else {
-        assign(other);
-    }
-    return *this;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::operator=(
-    TrivialVectorHeader&& other
-) -> TrivialVectorHeader& {
-    bool can_steal =
-        (AllocTraits::propagate_on_container_move_assignment or
-         AllocTraits::is_always_equal or 
-         get_allocator() == other.get_allocator()) and
-        not other.data_is_inlined();
-    if (can_steal) {
-        deallocate();
-        constexpr bool move_alloc = 
-            AllocTraits::propagate_on_container_move_assignment;
-        if constexpr(move_alloc) {
-            *this = std::move(static_cast<Allocator&>(other));
-        }
-        m_data = std::exchange(other.m_data, nullptr);
-        m_size = std::exchange(other.m_size, 0);
-        m_capacity = std::exchange(other.m_capacity, 0);
-    } else {
-        // Stealing is not possible if:
-        // 1) other's data is stored inline
-        // 2) allocators are not equal and propagation is not allowed
-        //
-        // Solution: resize and copy
-        fit(other.size());
-        std::ranges::copy(other, data());
-    }
-    return *this;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::operator=(
-    std::initializer_list<T> init
-) -> TrivialVectorHeader& {
-    assign(init);
-    return *this;
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
@@ -824,6 +1225,7 @@ constexpr auto TRIVIAL_VECTOR_HEADER::emplace_back() -> reference {
     } else {
         auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
         std::ranges::copy_n(data(), size(), new_data);
+        deallocate();
         m_data = new_data;
         m_capacity = new_capacity;
         return data()[m_size++];
@@ -888,33 +1290,11 @@ constexpr void TRIVIAL_VECTOR_HEADER::adjust(size_type new_size) noexcept {
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr void TRIVIAL_VECTOR_HEADER::fit(size_type new_size) {
     if (capacity() < new_size) {
-        auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
+        auto [new_data, new_capacity] = allocate_for_size(new_size);
         m_data = new_data;
         m_capacity = new_capacity;
     }
     m_size = new_size;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::allocate_for_size(size_type new_size) -> AllocateResult {
-    try {
-        auto new_capacity = std::bit_ceil(new_size);
-        return { allocate(new_capacity), new_capacity };
-    } catch (std::bad_alloc&) {
-        return { allocate(new_size), new_size };
-    }
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::allocate(size_type new_capacity) -> pointer {
-    return AllocTraits::allocate(*this, new_capacity);
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::deallocate() noexcept {
-    if (data() != inline_data()) {
-        AllocTraits::deallocate(*this, data(), capacity());
-    }
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
@@ -927,89 +1307,19 @@ constexpr auto TRIVIAL_VECTOR_HEADER::inline_data() noexcept -> T* {
     return static_cast<InlineTrivialVector<T, 1, Allocator>*>(this)->inline_data();
 }
 
-template<
-    typename T1, typename Allocator1,
-    typename T2, typename Allocator2
-> constexpr bool operator==(
-    const TrivialVectorHeader<T1, Allocator1>& l,
-    const TrivialVectorHeader<T2, Allocator2>& r
-) noexcept {
-    return std::ranges::equal(l, r);
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+void swap(
+    TRIVIAL_VECTOR_HEADER& lhs, TRIVIAL_VECTOR_HEADER& rhs
+) noexcept(noexcept(lhs.swap(rhs))) {
+    lhs.swap(rhs);
 }
 
-template<
-    typename T1, typename Allocator1,
-    typename T2, typename Allocator2
-> constexpr auto operator<=>(
-    const TrivialVectorHeader<T1, Allocator1>& l,
-    const TrivialVectorHeader<T2, Allocator2>& r
-) noexcept {
-    return std::lexicographical_compare_three_way(
-        l.begin(), l.end(),
-        r.begin(), r.end());
-}
-
-template<
-    typename T1, typename Allocator1,
-    typename T2, typename Allocator2
-> void swap(
-    TrivialVectorHeader<T1, Allocator1>& l,
-    TrivialVectorHeader<T2, Allocator2>& r
-) noexcept (
-    false //TODO
-) {
-    l.swap(r);
-}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector() noexcept(noexcept(Allocator())):
-    Base{Allocator(), inline_data(), Storage::Capacity} {}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(Allocator alloc) noexcept:
-    Base{std::move(alloc), inline_data(), Storage::Capacity} {}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(size_type size, Allocator alloc):
-    InlineTrivialVector{std::move(alloc)}
-{
-    if (size > this->capacity()) {
-        auto [new_data, new_capacity] = this->allocate_for_size(size);
-        m_data = new_data;
-        m_capacity = new_capacity;
-    }
-    m_size = size;
-}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
-    size_type size, const value_type& value, Allocator alloc
-): InlineTrivialVector{size, std::move(alloc)}
-{
-    this->fill(value);
-}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-    requires std::convertible_to<
-        std::iter_value_t<Iter>,
-        typename INLINE_TRIVIAL_VECTOR::value_type>
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
-    Iter first, Sent last, Allocator alloc
-): InlineTrivialVector{std::move(alloc)}
-{
-    this->assign(first, last);
-}
-
-INLINE_TRIVIAL_VECTOR_TEMPLATE
-template<std::ranges::input_range R>
-    requires std::convertible_to<
-        std::ranges::range_value_t<R>,
-        typename INLINE_TRIVIAL_VECTOR::value_type>
-constexpr INLINE_TRIVIAL_VECTOR::InlineTrivialVector(
-    R&& r, Allocator alloc
-): InlineTrivialVector{std::move(alloc)} {
-    this->assign(r);
+template<typename T, unsigned LHSCapacity, unsigned RHSCapacity, typename Allocator>
+void swap(
+    InlineTrivialVector<T, LHSCapacity, Allocator>& lhs,
+    InlineTrivialVector<T, RHSCapacity, Allocator>& rhs
+) noexcept(noexcept(lhs.swap(rhs))) {
+    lhs.swap(rhs);
 }
 }
 
