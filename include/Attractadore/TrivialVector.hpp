@@ -311,7 +311,7 @@ public:
         if constexpr (std::ranges::sized_range<R>) {
             auto new_size = std::ranges::size(r);
             adjust(new_size);
-            std::ranges::copy(r, data());
+            std::ranges::copy(std::forward<R>(r), data());
         } else {
             write(std::ranges::begin(r), std::ranges::end(r));
         }
@@ -417,7 +417,8 @@ public:
         std::ranges::contiguous_range<R> and
         std::ranges::common_range<R> and
         std::convertible_to<std::ranges::iterator_t<R>, const_iterator>
-    constexpr iterator erase(R&& r) noexcept { return erase(std::ranges::begin(r), std::ranges::end(r)); }
+    constexpr iterator erase(R&& r) noexcept {
+        return erase(std::ranges::begin(r), std::ranges::end(r)); }
 
     constexpr void push_back(const value_type& value) { emplace_back() = value; }
     constexpr iterator append(size_type count, const value_type& value) {
@@ -431,7 +432,7 @@ public:
     template<std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
     constexpr iterator append(R&& r) {
-        return insert(end(), r);
+        return insert(end(), std::forward<R>(r));
     }
     constexpr iterator append(std::initializer_list<value_type> init) {
         return insert(end(), init);
@@ -452,7 +453,7 @@ public:
     template<std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
     constexpr iterator add_back(R&& r) noexcept {
-        return add(end(), r);
+        return add(end(), std::forward<R>(r));
     }
     constexpr iterator add_back(std::initializer_list<value_type> init) noexcept {
         return add(end(), init);
@@ -652,14 +653,14 @@ public:
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
     constexpr explicit InlineTrivialVector(R&& r)
         requires std::default_initializable<Allocator>:
-        InlineTrivialVector(r, Allocator()) {}
+        InlineTrivialVector(std::forward<R>(r), Allocator()) {}
 
     template<std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
     constexpr InlineTrivialVector(R&& r, Allocator alloc):
         InlineTrivialVector(std::move(alloc))
     {
-        this->assign(r);
+        this->assign(std::forward<R>(r));
     }
 
     constexpr InlineTrivialVector(const InlineTrivialVector& other):
@@ -930,7 +931,7 @@ constexpr void TRIVIAL_VECTOR_HEADER::assign(R&& r) {
     if constexpr (std::ranges::sized_range<R>) {
         auto new_size = std::ranges::size(r);
         fit(new_size);
-        std::ranges::copy(r, data());
+        std::ranges::copy(std::forward<R>(r), data());
     } else {
         assign(std::ranges::begin(r), std::ranges::end(r));
     }
@@ -1071,7 +1072,7 @@ constexpr auto TRIVIAL_VECTOR_HEADER::insert(
         auto count = std::ranges::size(r);
         if (count) {
             return do_sized_insert(pos, count,
-                [&] (auto it) { return std::ranges::copy(r, it).out; }
+                [&] (auto it) { return std::ranges::copy(std::forward<R>(r), it).out; }
             );
         }
     } else {
@@ -1157,7 +1158,7 @@ constexpr auto TRIVIAL_VECTOR_HEADER::add(
         auto count = std::ranges::size(r);
         if (count) {
             return do_sized_add(pos, count,
-                [&] (auto it) { return std::ranges::copy(r, it).out; }
+                [&] (auto it) { return std::ranges::copy(std::forward<R>(r), it).out; }
             );
         }
     } else {
@@ -1303,9 +1304,9 @@ template<typename R> requires
 constexpr void TRIVIAL_VECTOR_HEADER::resize(R&& r) noexcept {
     assert(r.begin() >= begin() and r.end() <= end());
     if (r.begin() != begin()) {
-        std::ranges::copy(r, begin());
+        std::ranges::copy(std::forward<R>(r), begin());
     }
-    m_size = r.size();
+    m_size = std::ranges::size(r);
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
