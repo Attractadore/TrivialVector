@@ -172,7 +172,7 @@ protected:
         std::ranges::swap(lhs.m_data, rhs.m_data);
         std::ranges::swap(lhs.m_capacity, rhs.m_capacity);
     }
-        
+
     static constexpr void copy_swap(
         TrivialVectorHeader& lhs, TrivialVectorHeader& rhs,
         size_type swap_size 
@@ -783,75 +783,20 @@ public:
     }
 
 private:
-    struct InlineSwap {
-        template<unsigned LHSCapacity, unsigned RHSCapacity>
-        constexpr void operator() (
-            InlineTrivialVector<T, LHSCapacity, Allocator>& lhs,
-            InlineTrivialVector<T, RHSCapacity, Allocator>& rhs
-        ) const noexcept (
-            InlineTrivialVector<T, LHSCapacity, Allocator>::max_inline_size() ==
-            InlineTrivialVector<T, RHSCapacity, Allocator>::max_inline_size() or
-            noexcept(Base::inline_reserve_swap(lhs, rhs))
-        ) {
-            constexpr auto common_inline_size =
-                std::min(lhs.max_inline_size(), rhs.max_inline_size());
-            if constexpr (lhs.max_inline_size() == rhs.max_inline_size()) {
-                Base::template copy_swap<common_inline_size>(lhs, rhs);
-            } else {
-                bool can_copy_swap =
-                    lhs.size() <= common_inline_size and
-                    rhs.size() <= common_inline_size;
-                if (can_copy_swap) {
-                    Base::template copy_swap<common_inline_size>(lhs, rhs);
-                } else { 
-                    Base::inline_reserve_swap(lhs, rhs);
-                }
-            }
-        }
-    };
+    template<typename U, typename A>
+    friend class InlineSwap;
 
-    struct InlineHeapSwap {
-        template <unsigned LHSCapacity, unsigned RHSCapacity>
-        constexpr void operator() (
-            InlineTrivialVector<T, LHSCapacity, Allocator>& inl,
-            InlineTrivialVector<T, RHSCapacity, Allocator>& heap 
-        ) const noexcept (
-            InlineTrivialVector<T, LHSCapacity, Allocator>::max_inline_size() ==
-            InlineTrivialVector<T, RHSCapacity, Allocator>::max_inline_size() or
-            noexcept(Base::inline_heap_swap(inl, heap))
-        ) {
-            assert(inl.data_is_inlined());
-            assert(not heap.data_is_inlined());
+    template<typename U, typename A>
+    friend class InlineHeapSwap;
 
-            auto hybrid_swap = [&inl, &heap] {
-                std::ranges::copy(inl, heap.inline_data());
-                inl.m_data = std::exchange(heap.m_data, heap.inline_data());
-                inl.m_capacity = std::exchange(heap.m_capacity, heap.max_inline_size());
-            };
-
-            if constexpr (inl.max_inline_size() == heap.max_inline_size()) {
-                hybrid_swap();
-            } else {
-                constexpr auto common_inline_size = std::min(
-                    inl.max_inline_size(), heap.max_inline_size());
-                if (inl.size() <= common_inline_size) {
-                    hybrid_swap();
-                } else {
-                    Base::inline_heap_swap(inl, heap);
-                }
-            }
-        }
-    };
+    template<unsigned OtherInlineCapacity>
+    static constexpr bool swap_is_noexcept() noexcept;
 
 public:
     template<unsigned OtherInlineCapacity>
     constexpr void swap(
         InlineTrivialVector<T, OtherInlineCapacity, Allocator>& other
-    ) noexcept (
-        noexcept(Base::template swap_impl<InlineSwap{}, InlineHeapSwap{}>(*this, other))
-    ) {
-        Base::template swap_impl<InlineSwap{}, InlineHeapSwap{}>(*this, other);
-    }
+    ) noexcept (swap_is_noexcept<OtherInlineCapacity>());
 
     static constexpr size_type max_inline_size() noexcept { return Storage::Capacity; }
 
@@ -872,6 +817,88 @@ protected:
         return Storage::addr();
     }
 };
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+struct InlineSwap {
+    template<unsigned LHSCapacity, unsigned RHSCapacity>
+    constexpr void operator() (
+        InlineTrivialVector<T, LHSCapacity, Allocator>& lhs,
+        InlineTrivialVector<T, RHSCapacity, Allocator>& rhs
+    ) const noexcept (
+        InlineTrivialVector<T, LHSCapacity, Allocator>::max_inline_size() ==
+        InlineTrivialVector<T, RHSCapacity, Allocator>::max_inline_size() or
+        noexcept(TRIVIAL_VECTOR_HEADER::inline_reserve_swap(lhs, rhs))
+    ) {
+        constexpr auto common_inline_size =
+            std::min(lhs.max_inline_size(), rhs.max_inline_size());
+        if constexpr (lhs.max_inline_size() == rhs.max_inline_size()) {
+            TRIVIAL_VECTOR_HEADER::template copy_swap<common_inline_size>(lhs, rhs);
+        } else {
+            bool can_copy_swap =
+                lhs.size() <= common_inline_size and
+                rhs.size() <= common_inline_size;
+            if (can_copy_swap) {
+                TRIVIAL_VECTOR_HEADER::template copy_swap<common_inline_size>(lhs, rhs);
+            } else {
+                TRIVIAL_VECTOR_HEADER::inline_reserve_swap(lhs, rhs);
+            }
+        }
+    }
+};
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+struct InlineHeapSwap {
+    template <unsigned LHSCapacity, unsigned RHSCapacity>
+    constexpr void operator() (
+        InlineTrivialVector<T, LHSCapacity, Allocator>& inl,
+        InlineTrivialVector<T, RHSCapacity, Allocator>& heap
+    ) const noexcept (
+        InlineTrivialVector<T, LHSCapacity, Allocator>::max_inline_size() ==
+        InlineTrivialVector<T, RHSCapacity, Allocator>::max_inline_size() or
+        noexcept(TRIVIAL_VECTOR_HEADER::inline_heap_swap(inl, heap))
+    ) {
+        assert(inl.data_is_inlined());
+        assert(not heap.data_is_inlined());
+
+        auto hybrid_swap = [&inl, &heap] {
+            std::ranges::copy(inl, heap.inline_data());
+            inl.m_data = std::exchange(heap.m_data, heap.inline_data());
+            inl.m_capacity = std::exchange(heap.m_capacity, heap.max_inline_size());
+        };
+
+        if constexpr (inl.max_inline_size() == heap.max_inline_size()) {
+            hybrid_swap();
+        } else {
+            constexpr auto common_inline_size = std::min(
+                inl.max_inline_size(), heap.max_inline_size());
+            if (inl.size() <= common_inline_size) {
+                hybrid_swap();
+            } else {
+                TRIVIAL_VECTOR_HEADER::inline_heap_swap(inl, heap);
+            }
+        }
+    }
+};
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+template<unsigned OtherInlineCapacity>
+constexpr bool INLINE_TRIVIAL_VECTOR::swap_is_noexcept () noexcept {
+    return noexcept(Base::template swap_impl<
+        InlineSwap<T, Allocator>{},
+        InlineHeapSwap<T, Allocator>{}>(
+            std::declval<INLINE_TRIVIAL_VECTOR&>(),
+            std::declval<InlineTrivialVector<T, OtherInlineCapacity, Allocator>&>()));
+}
+
+INLINE_TRIVIAL_VECTOR_TEMPLATE
+template<unsigned OtherInlineCapacity>
+constexpr void INLINE_TRIVIAL_VECTOR::swap(
+    InlineTrivialVector<T, OtherInlineCapacity, Allocator>& other
+) noexcept (swap_is_noexcept<OtherInlineCapacity>()) {
+    Base::template swap_impl<
+        InlineSwap<T, Allocator>{},
+        InlineHeapSwap<T, Allocator>{}>(*this, other);
+}
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr TRIVIAL_VECTOR_HEADER::~TrivialVectorHeader() {

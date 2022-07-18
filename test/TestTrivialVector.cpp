@@ -417,7 +417,7 @@ TEST_F(TestSwap, InlineCopySwap) {
     EXPECT_TRUE(std::ranges::equal(vec2, arr1));
 }
 
-TEST_F(TestSwap, InlineReallocSwap) {
+TEST_F(TestSwap, InlineReallocCopySwap) {
     InlineTrivialVector<int, sz1> vec1(arr1);
     InlineTrivialVector<int, sz2> vec2(arr2);
     vec1.swap(vec2);
@@ -425,7 +425,7 @@ TEST_F(TestSwap, InlineReallocSwap) {
     EXPECT_TRUE(std::ranges::equal(vec2, arr1));
 }
 
-TEST_F(TestSwap, InlineHeapCopySwap) {
+TEST_F(TestSwap, InlineHeapHybridSwap) {
     InlineTrivialVector<int, sz2> vec1(arr2);
     InlineTrivialVector<int, sz2> vec2(arr3);
     vec1.swap(vec2);
@@ -436,12 +436,20 @@ TEST_F(TestSwap, InlineHeapCopySwap) {
     EXPECT_TRUE(std::ranges::equal(vec2, arr3));
 }
 
-TEST_F(TestSwap, InlineHeapReallocSwap) {
+TEST_F(TestSwap, InlineHeapCopySwap) {
     InlineTrivialVector<int, sz1> vec1(arr1);
     InlineTrivialVector<int, sz2> vec2(arr3);
     vec1.swap(vec2);
     EXPECT_TRUE(std::ranges::equal(vec1, arr3));
     EXPECT_TRUE(std::ranges::equal(vec2, arr1));
+}
+
+TEST_F(TestSwap, InlineHeapReallocPointerSwap) {
+    InlineTrivialVector<int, sz2> vec1(arr2);
+    TrivialVector<int> vec2(arr3);
+    vec1.swap(vec2);
+    EXPECT_TRUE(std::ranges::equal(vec1, arr3));
+    EXPECT_TRUE(std::ranges::equal(vec2, arr2));
 }
 
 TEST(TestAssign, FillWithValueRealloc) {
