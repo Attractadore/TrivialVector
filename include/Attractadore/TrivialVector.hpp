@@ -478,17 +478,35 @@ public:
             std::numeric_limits<size_type>::max() / sizeof(value_type));
     }
 
-    constexpr void reserve(size_type new_capacity);
+    constexpr void reserve(size_type new_capacity) {
+        if (new_capacity > capacity()) {
+            reallocate(new_capacity);
+        }
+    }
 
+protected:
     constexpr void reserve_on_heap(size_type new_capacity) {
         if (new_capacity > capacity() or data_is_inlined()) {
             reallocate(new_capacity);
         }
     }
 
-    constexpr size_type capacity() const noexcept { return m_capacity; }
-    constexpr void shrink_to_fit() noexcept;
-    constexpr void clear() noexcept;
+public:
+    constexpr size_type capacity() const noexcept {
+        return m_capacity;
+    }
+
+    constexpr void shrink_to_fit() noexcept {
+        if (size() < capacity() and not data_is_inlined()) {
+            try {
+                reallocate(size());
+            } catch (const std::bad_alloc&) {}
+        }
+    }
+
+    constexpr void clear() noexcept {
+        adjust(0);
+    }
 
     constexpr iterator insert(const_iterator pos, const value_type& value);
     constexpr iterator insert(const_iterator pos, size_type count, const value_type& value);
@@ -907,6 +925,19 @@ public:
 
     static constexpr size_type max_inline_size() noexcept { return Storage::Capacity; }
 
+    constexpr void shrink_to_fit() noexcept {
+        if (not this->data_is_inlined()) {
+            if (this->size() <= max_inline_size()) {
+                std::ranges::copy(*this, this->inline_data());
+                deallocate();
+            } else if (this->size() <= this->capacity()) {
+                try {
+                    this->reallocate(this->size());
+                } catch (const std::bad_alloc&) {}
+            }
+        }
+    }
+
 protected:
     constexpr void deallocate() noexcept {
         if (m_data != inline_data()) {
@@ -1020,27 +1051,6 @@ constexpr void TRIVIAL_VECTOR_HEADER::reallocate(size_type new_capacity) {
     deallocate();
     m_data = new_data;
     m_capacity = new_capacity;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::reserve(size_type new_capacity) {
-    if (new_capacity > capacity()) {
-        reallocate(new_capacity);
-    }
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::shrink_to_fit() noexcept {
-    if (size() < capacity()) {
-        try {
-            reallocate(size());
-        } catch (const std::bad_alloc&) {}
-    }
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::clear() noexcept {
-    adjust(0);
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE

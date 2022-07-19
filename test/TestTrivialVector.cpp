@@ -1066,3 +1066,66 @@ TEST(TestSize, NotEmpty) {
     EXPECT_EQ(vec.size(), sz);
     EXPECT_EQ(vec.size(), std::ranges::distance(vec.begin(), vec.end()));
 }
+
+TEST(TestCapacity, Empty) {
+    TrivialVector<int> vec;
+    EXPECT_EQ(vec.capacity(), 0);
+}
+
+TEST(TestCapacity, Inline) {
+    InlineTrivialVector<int, 5> vec;
+    EXPECT_EQ(vec.capacity(), vec.max_inline_size());
+}
+
+TEST(TestCapacity, NotEmpty) {
+    TrivialVector<int> vec(5);
+    EXPECT_GE(vec.capacity(), vec.size());
+}
+
+TEST(TestShrinkToFit, Empty) {
+    TrivialVector<int> vec;
+    EXPECT_EQ(vec.capacity(), 0);
+    vec.shrink_to_fit();
+    EXPECT_EQ(vec.capacity(), 0);
+}
+
+TEST(TestShrinkToFit, EmptyInline) {
+    InlineTrivialVector<int, 5> vec;
+    EXPECT_EQ(vec.capacity(), vec.max_inline_size());
+    vec.shrink_to_fit();
+    EXPECT_EQ(vec.capacity(), vec.max_inline_size());
+}
+
+TEST(TestShrinkToFit, NonEmpty) {
+    TrivialVector<int> vec(5);
+    auto old_capacity = vec.capacity();
+    vec.shrink_to_fit();
+    EXPECT_LE(vec.capacity(), old_capacity);
+}
+
+TEST(TestShrinkToFit, NonEmptyInline) {
+    InlineTrivialVector<int, 5> vec(4);
+    EXPECT_EQ(vec.capacity(), vec.max_inline_size());
+    vec.shrink_to_fit();
+    EXPECT_EQ(vec.capacity(), vec.max_inline_size());
+}
+
+TEST(TestShrinkToFit, NonEmptyHeap) {
+    InlineTrivialVector<int, 3> vec(5);
+    EXPECT_GT(vec.capacity(), vec.max_inline_size());
+    vec.assign(vec.max_inline_size() - 1, 0);
+    vec.shrink_to_fit();
+    EXPECT_EQ(vec.capacity(), vec.max_inline_size());
+}
+
+TEST(TestClear, Empty) {
+    TrivialVector<int> vec;
+    vec.clear();
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestClear, NonEmpty) {
+    TrivialVector<int> vec(5);
+    vec.clear();
+    EXPECT_TRUE(vec.empty());
+}
