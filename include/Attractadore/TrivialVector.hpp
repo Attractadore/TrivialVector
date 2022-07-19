@@ -282,16 +282,37 @@ public:
 
     constexpr void assign(size_type count, const value_type& value) {
         fit(count);
-        fill(value);
+        std::ranges::fill(*this, value);
     }
 
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-        requires std::convertible_to<std::iter_value_t<Iter>, value_type>
-    constexpr void assign(Iter first, Sent last);
+        requires std::convertible_to<
+            std::iter_value_t<Iter>, value_type>
+    constexpr void assign(Iter first, Sent last) {
+        if constexpr (std::sized_sentinel_for<Sent, Iter>) {
+            auto new_size = std::ranges::distance(first, last);
+            fit(new_size);
+            std::ranges::copy(first, last, data());
+        } else {
+            auto [new_first, new_end] =
+                copy_some(first, last, data(), data() + capacity());
+            m_size = std::ranges::distance(data(), new_end);
+            std::ranges::copy(new_first, last, std::back_inserter(*this));
+        }
+    }
 
     template<std::ranges::input_range R>
-        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
-    constexpr void assign(R&& r);
+        requires std::convertible_to<
+            std::ranges::range_value_t<R>, value_type>
+    constexpr void assign(R&& r) {
+        if constexpr (std::ranges::sized_range<R>) {
+            auto new_size = std::ranges::size(r);
+            fit(new_size);
+            std::ranges::copy(std::forward<R>(r), data());
+        } else {
+            assign(std::ranges::begin(r), std::ranges::end(r));
+        }
+    }
 
     constexpr void assign(std::initializer_list<value_type> init) {
         assign(init.begin(), init.end());
@@ -299,14 +320,20 @@ public:
 
     constexpr void write(size_t count, const value_type& value) noexcept {
         adjust(count);
-        fill(value);
+        std::ranges::fill(*this, value);
     }
 
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-        requires std::convertible_to<std::iter_value_t<Iter>, value_type>
-    constexpr void write(Iter first, Sent last) noexcept;
+        requires std::convertible_to<
+            std::iter_value_t<Iter>, value_type>
+    constexpr void write(Iter first, Sent last) noexcept {
+        auto new_end = std::ranges::copy(first, last, data()).out;
+        m_size = std::ranges::distance(data(), new_end);
+    }
+
     template<std::ranges::input_range R>
-        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+        requires std::convertible_to<
+            std::ranges::range_value_t<R>, value_type>
     constexpr void write(R&& r) noexcept {
         if constexpr (std::ranges::sized_range<R>) {
             auto new_size = std::ranges::size(r);
@@ -316,9 +343,12 @@ public:
             write(std::ranges::begin(r), std::ranges::end(r));
         }
     }
-    constexpr void write(std::initializer_list<value_type> init) noexcept { write(init.begin(), init.end()); }
 
-    constexpr void fill(const value_type& value) noexcept;
+    constexpr void write(
+        std::initializer_list<value_type> init
+    ) noexcept {
+        write(init.begin(), init.end());
+    }
 
     constexpr const allocator_type& get_allocator() const noexcept { return *this; }
 
@@ -632,7 +662,7 @@ public:
     constexpr InlineTrivialVector(size_type count, const value_type& value, Allocator alloc):
         InlineTrivialVector(count, std::move(alloc))
     {
-        this->fill(value);
+        std::ranges::fill(*this, value);
     }
 
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
@@ -904,50 +934,6 @@ constexpr void INLINE_TRIVIAL_VECTOR::swap(
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr TRIVIAL_VECTOR_HEADER::~TrivialVectorHeader() {
     deallocate();
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-    requires std::convertible_to<std::iter_value_t<Iter>, typename TRIVIAL_VECTOR_HEADER::value_type>
-constexpr void TRIVIAL_VECTOR_HEADER::assign(Iter first, Sent last) {
-    if constexpr (std::sized_sentinel_for<Sent, Iter>) {
-        auto new_size = std::ranges::distance(first, last);
-        fit(new_size);
-        std::ranges::copy(first, last, data());
-    } else {
-        auto new_size = 0;
-        for (; new_size < capacity() and first != last; new_size++, ++first) {
-            data()[new_size] = *first;
-        }
-        m_size = new_size;
-        std::ranges::copy(first, last, std::back_inserter(*this));
-    }
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-template<std::ranges::input_range R>
-    requires std::convertible_to<std::ranges::range_value_t<R>, typename TRIVIAL_VECTOR_HEADER::value_type>
-constexpr void TRIVIAL_VECTOR_HEADER::assign(R&& r) {
-    if constexpr (std::ranges::sized_range<R>) {
-        auto new_size = std::ranges::size(r);
-        fit(new_size);
-        std::ranges::copy(std::forward<R>(r), data());
-    } else {
-        assign(std::ranges::begin(r), std::ranges::end(r));
-    }
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-    requires std::convertible_to<std::iter_value_t<Iter>, typename TRIVIAL_VECTOR_HEADER::value_type>
-constexpr void TRIVIAL_VECTOR_HEADER::write(Iter first, Sent last) noexcept {
-    auto new_end = std::ranges::copy(first, last, data());
-    m_size = std::ranges::distance(data(), new_end);
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::fill(const value_type& value) noexcept {
-    std::ranges::fill_n(data(), size(), value);
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE

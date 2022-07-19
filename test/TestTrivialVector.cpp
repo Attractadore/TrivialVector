@@ -7,6 +7,12 @@
 using Attractadore::InlineTrivialVector;
 using Attractadore::TrivialVector;
 
+#ifndef NDEBUG
+#define EXPECT_ASSERT(statement) EXPECT_DEATH(statement, "")
+#else
+#define EXPECT_ASSERT(statement) EXPECT_DEATH({}, "")
+#endif
+
 TEST(TestConstruct, Default) {
     TrivialVector<int> vec;
     EXPECT_TRUE(vec.empty());
@@ -452,6 +458,12 @@ TEST_F(TestSwap, InlineHeapReallocPointerSwap) {
     EXPECT_TRUE(std::ranges::equal(vec2, arr2));
 }
 
+TEST(TestAssign, FillWithValueEmpty) {
+    TrivialVector<int> vec;
+    vec.assign(0, 0);
+    EXPECT_TRUE(vec.empty());
+}
+
 TEST(TestAssign, FillWithValueRealloc) {
     TrivialVector<int> vec;
     int val = 0;
@@ -496,4 +508,385 @@ TEST(TestAssign, FillWithValueNoReallocHeap) {
     for (size_t i = 0; i < sz; i++) {
         EXPECT_EQ(vec.data()[i], val);
     }
+}
+
+TEST(TestAssign, RAIterEmpty) {
+    std::vector<int> data;
+    TrivialVector<int> vec;
+    vec.assign(data.end(), data.end());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestAssign, RAIterRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec;
+    vec.assign(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, RAIterNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.assign(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, RAIterNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.assign(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, FwdIterEmpty) {
+    std::list<int> data;
+    TrivialVector<int> vec;
+    vec.assign(data.end(), data.end());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestAssign, FwdIterRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec;
+    vec.assign(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, FwdIterNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.assign(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, FwdIterNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.assign(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, EmptySizedRange) {
+    std::vector<int> data;
+    TrivialVector<int> vec;
+    vec.assign(data);
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestAssign, SizedRangeRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec;
+    vec.assign(data);
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, SizedRangeNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.assign(data);
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, SizedRangeNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.assign(data);
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, EmptyUnsizedRange) {
+    std::list<int> data;
+    TrivialVector<int> vec;
+    vec.assign(std::ranges::subrange(data));
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestAssign, UnsizedRangeRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec;
+    vec.assign(std::ranges::subrange(data));
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, UnsizedRangeNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.assign(std::ranges::subrange(data));
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, UnsizedRangeNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.assign(std::ranges::subrange(data));
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, EmptyInitList) {
+    TrivialVector<int> vec;
+    vec.assign({});
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestAssign, InitListRealloc) {
+    std::array data = {1, 2, 3};
+    TrivialVector<int> vec;
+    vec.assign({1, 2, 3});
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, InitListNoReallocInline) {
+    std::array data = {1, 2, 3};
+    InlineTrivialVector<int, 3> vec;
+    vec.assign({1, 2, 3});
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAssign, InitListNoReallocHeap) {
+    std::array data = {1, 2, 3};
+    TrivialVector<int> vec(data.size());
+    vec.assign({1, 2, 3});
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, FillWithValueEmpty) {
+    TrivialVector<int> vec;
+    vec.write(0, 0);
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestWrite, FillWithValueRealloc) {
+    TrivialVector<int> vec;
+    int val = 0;
+    auto sz = 5;
+    EXPECT_ASSERT(
+        vec.write(sz, val);
+    );
+}
+
+TEST(TestWrite, FillWithValueNoReallocInline) {
+    InlineTrivialVector<int, 6> vec;
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+
+    int val = 0;
+    auto sz = 5;
+    vec.write(sz, val);
+
+    ASSERT_EQ(vec.data(), old_data);
+    EXPECT_EQ(vec.capacity(), old_capacity);
+    ASSERT_EQ(vec.size(), sz);
+    for (size_t i = 0; i < sz; i++) {
+        EXPECT_EQ(vec.data()[i], val);
+    }
+}
+
+TEST(TestWrite, FillWithValueNoReallocHeap) {
+    constexpr int val = 0;
+    constexpr auto sz = 5;
+
+    TrivialVector<int> vec(sz);
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+
+    vec.write(sz, val);
+
+    ASSERT_EQ(vec.data(), old_data);
+    EXPECT_EQ(vec.capacity(), old_capacity);
+    ASSERT_EQ(vec.size(), sz);
+    for (size_t i = 0; i < sz; i++) {
+        EXPECT_EQ(vec.data()[i], val);
+    }
+}
+
+TEST(TestWrite, RAIterEmpty) {
+    std::vector<int> data;
+    TrivialVector<int> vec;
+    vec.write(data.end(), data.end());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestWrite, RAIterRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.write(data.begin(), data.end());
+    );
+}
+
+TEST(TestWrite, RAIterNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.write(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, RAIterNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.write(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, FwdIterEmpty) {
+    std::list<int> data;
+    TrivialVector<int> vec;
+    vec.write(data.end(), data.end());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestWrite, FwdIterRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.write(data.begin(), data.end());
+    );
+}
+
+TEST(TestWrite, FwdIterNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.write(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, FwdIterNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.write(data.begin(), data.end());
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, EmptySizedRange) {
+    std::vector<int> data;
+    TrivialVector<int> vec;
+    vec.write(data);
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestWrite, SizedRangeRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.write(data);
+    );
+}
+
+TEST(TestWrite, SizedRangeNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.write(data);
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, SizedRangeNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::vector<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.write(data);
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, EmptyUnsizedRange) {
+    std::list<int> data;
+    TrivialVector<int> vec;
+    vec.write(std::ranges::subrange(data));
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestWrite, UnsizedRangeRealloc) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.write(std::ranges::subrange(data));
+    );
+}
+
+TEST(TestWrite, UnsizedRangeNoReallocInline) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    InlineTrivialVector<int, 5> vec;
+    vec.write(std::ranges::subrange(data));
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, UnsizedRangeNoReallocHeap) {
+    int val = 0;
+    auto sz = 5;
+    std::list<int> data(sz, val);
+    TrivialVector<int> vec(data.size());
+    vec.write(std::ranges::subrange(data));
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, EmptyInitList) {
+    TrivialVector<int> vec;
+    vec.write({});
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestWrite, InitListRealloc) {
+    std::array data = {1, 2, 3};
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.write({1, 2, 3});
+    );
+}
+
+TEST(TestWrite, InitListNoReallocInline) {
+    std::array data = {1, 2, 3};
+    InlineTrivialVector<int, 3> vec;
+    vec.write({1, 2, 3});
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestWrite, InitListNoReallocHeap) {
+    std::array data = {1, 2, 3};
+    TrivialVector<int> vec(data.size());
+    vec.write({1, 2, 3});
+    EXPECT_TRUE(std::ranges::equal(vec, data));
 }
