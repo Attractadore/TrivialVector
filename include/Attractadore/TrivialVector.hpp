@@ -352,52 +352,128 @@ public:
 
     constexpr const allocator_type& get_allocator() const noexcept { return *this; }
 
+private:
+    constexpr void range_check(size_type idx) const {
+        if (idx >= size()) {
+            throw std::out_of_range{
+                "TrivialVector range check: index " +
+                std::to_string(idx) +
+                " >= size " +
+                std::to_string(size())};
+        }
+    }
+
+public:
+    constexpr const_reference at(size_type idx) const {
+        range_check(idx);
+        return m_data[idx];
+    }
+
+    constexpr reference at(size_type idx) {
+        range_check(idx);
+        return m_data[idx];
+    }
+
     constexpr const_reference operator[](size_type idx) const noexcept {
         assert(idx < size());
         return m_data[idx];
     }
+
     constexpr reference operator[](size_type idx) noexcept {
         assert(idx < size());
         return m_data[idx];
     }
+
     constexpr const_reference front() const noexcept {
         assert(not empty());
         return m_data[0];
     }
+
     constexpr reference front() noexcept {
         assert(not empty());
         return m_data[0];
     }
+
     constexpr const_reference back() const noexcept {
         assert(not empty());
         return m_data[size() - 1];
     }
+
     constexpr reference back() noexcept {
         assert(not empty());
         return m_data[size() - 1];
     }
-    constexpr const value_type* cdata() const noexcept { return data(); }
-    constexpr const value_type* data() const noexcept { return std::to_address(m_data); }
-    constexpr value_type* data() noexcept { return std::to_address(m_data); }
 
-    constexpr const_iterator cbegin() const noexcept { return begin(); }
-    constexpr const_iterator cend() const noexcept { return end(); }
-    constexpr const_iterator begin() const noexcept { return const_iterator{m_data}; }
-    constexpr const_iterator end() const noexcept { return const_iterator{m_data + size()}; }
-    constexpr iterator begin() noexcept { return iterator{m_data}; }
-    constexpr iterator end() noexcept { return iterator{m_data + size()}; }
+    constexpr const value_type* cdata() const noexcept {
+        return data();
+    }
 
-    constexpr const_iterator crbegin() const noexcept { return rbegin(); }
-    constexpr const_iterator crend() const noexcept { return rend(); }
-    constexpr const_iterator rbegin() const noexcept { return const_reverse_iterator{end()}; }
-    constexpr const_iterator rend() const noexcept { return const_reverse_iterator{begin()}; }
-    constexpr iterator rbegin() noexcept { return reverse_iterator{end()}; }
-    constexpr iterator rend() noexcept { return reverse_iterator{begin()}; }
+    constexpr const value_type* data() const noexcept {
+        return std::to_address(m_data);
+    }
 
-    constexpr bool empty() const noexcept { return size() == 0; }
-    constexpr size_type size() const noexcept { return m_size; }
+    constexpr value_type* data() noexcept {
+        return std::to_address(m_data);
+    }
+
+    constexpr const_iterator cbegin() const noexcept {
+        return begin();
+    }
+
+    constexpr const_iterator cend() const noexcept {
+        return end();
+    }
+
+    constexpr const_iterator begin() const noexcept {
+        return const_iterator{m_data};
+    }
+
+    constexpr const_iterator end() const noexcept {
+        return const_iterator{m_data + size()};
+    }
+
+    constexpr iterator begin() noexcept {
+        return iterator{m_data};
+    }
+
+    constexpr iterator end() noexcept {
+        return iterator{m_data + size()};
+    }
+
+    constexpr const_reverse_iterator crbegin() const noexcept {
+        return rbegin();
+    }
+
+    constexpr const_reverse_iterator crend() const noexcept {
+        return rend();
+    }
+
+    constexpr const_reverse_iterator rbegin() const noexcept {
+        return const_reverse_iterator{end()};
+    }
+
+    constexpr const_reverse_iterator rend() const noexcept {
+        return const_reverse_iterator{begin()};
+    }
+
+    constexpr reverse_iterator rbegin() noexcept {
+        return reverse_iterator{end()};
+    }
+
+    constexpr reverse_iterator rend() noexcept {
+        return reverse_iterator{begin()};
+    }
+
+    constexpr bool empty() const noexcept {
+        return size() == 0;
+    }
+
+    constexpr size_type size() const noexcept {
+        return m_size;
+    }
+
     static constexpr size_type max_size() noexcept {
-        return std::min<size_t>(
+        return std::min<size_type>(
             std::numeric_limits<SizeT>::max(),
             std::numeric_limits<size_type>::max() / sizeof(value_type));
     }

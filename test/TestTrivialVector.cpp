@@ -12,6 +12,7 @@ using Attractadore::TrivialVector;
 #else
 #define EXPECT_ASSERT(statement) EXPECT_DEATH({}, "")
 #endif
+#define EXPECT_NO_ASSERT(statement) EXPECT_TRUE(true)
 
 TEST(TestConstruct, Default) {
     TrivialVector<int> vec;
@@ -889,4 +890,179 @@ TEST(TestWrite, InitListNoReallocHeap) {
     TrivialVector<int> vec(data.size());
     vec.write({1, 2, 3});
     EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestAt, InRange) {
+    TrivialVector<int> vec = {1, 2, 3};
+    EXPECT_NO_THROW(vec.at(0));
+    EXPECT_EQ(vec.at(0), 1);
+    vec.at(0) = 5;
+    EXPECT_EQ(vec.at(0), 5);
+}
+
+TEST(TestAt, OutOfRange) {
+    TrivialVector<int> vec;
+    EXPECT_THROW(vec.at(0), std::out_of_range);
+}
+
+TEST(TestAccess, InRange) {
+    TrivialVector<int> vec = {1, 2, 3};
+    EXPECT_NO_ASSERT(vec[0]);
+    EXPECT_EQ(vec[0], 1);
+    vec[0] = 5;
+    EXPECT_EQ(vec[0], 5);
+}
+
+TEST(TestAccess, OutOfRange) {
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(vec[0]);
+}
+
+TEST(TestFront, InRange) {
+    TrivialVector<int> vec = {1, 2, 3};
+    EXPECT_NO_ASSERT(vec.front());
+    EXPECT_EQ(vec.front(), 1);
+    vec.front() = 5;
+    EXPECT_EQ(vec.front(), 5);
+}
+
+TEST(TestFront, OutOfRange) {
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(vec.front());
+}
+
+TEST(TestBack, InRange) {
+    TrivialVector<int> vec = {1, 2, 3};
+    EXPECT_NO_ASSERT(vec.back());
+    EXPECT_EQ(vec.back(), 3);
+    vec.back() = 5;
+    EXPECT_EQ(vec.back(), 5);
+}
+
+TEST(TestBack, OutOfRange) {
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(vec.back());
+}
+
+TEST(TestData, CData) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    for (size_t i = 0; i < arr.size(); i++) {
+        EXPECT_EQ(vec.cdata()[i], arr[i]);
+    }
+}
+
+TEST(TestData, Data) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    for (size_t i = 0; i < arr.size(); i++) {
+        EXPECT_EQ(vec.data()[i], arr[i]);
+    }
+    std::array arr2 = {3, 1, 2};
+    for (size_t i = 0; i < arr2.size(); i++) {
+        vec.data()[i] = arr2[i];
+    }
+    EXPECT_TRUE(std::ranges::equal(vec, arr2));
+}
+
+TEST(TestIterators, CBegin) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(*vec.cbegin(), vec[0]);
+}
+
+TEST(TestIterators, CEnd) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(&*vec.cend(), vec.data() + vec.size());
+}
+
+TEST(TestIterators, Begin) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(*vec.begin(), vec[0]);
+    *vec.begin() = 5;
+    EXPECT_EQ(vec[0], 5);
+    EXPECT_EQ(*vec.begin(), vec[0]);
+}
+
+TEST(TestIterators, End) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(&*vec.end(), vec.data() + vec.size());
+}
+
+TEST(TestIterators, ChangeAll) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin(), arr.end()));
+    std::array arr2 = {2, 3, 1};
+    std::ranges::copy(arr2, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr2.begin(), arr2.end()));
+}
+
+TEST(TestIterators, CRBegin) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(*vec.crbegin(), vec[2]);
+}
+
+TEST(TestIterators, CREnd) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(&*vec.crend(), vec.data() - 1);
+}
+
+TEST(TestIterators, RBegin) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(*vec.rbegin(), vec[2]);
+    *vec.rbegin() = 5;
+    EXPECT_EQ(vec[2], 5);
+    EXPECT_EQ(*vec.rbegin(), vec[2]);
+}
+
+TEST(TestIterators, REnd) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_EQ(&*vec.rend(), vec.data() - 1);
+}
+
+TEST(TestIterators, ChangeAllReverse) {
+    std::array arr = {1, 2, 3};
+    TrivialVector<int> vec(arr);
+    EXPECT_TRUE(std::ranges::equal(
+        vec.rbegin(), vec.rend(),
+        arr.rbegin(), arr.rend()));
+    std::array arr2 = {2, 3, 1};
+    std::ranges::copy(arr2, vec.rbegin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr2.rbegin(), arr2.rend()));
+}
+
+TEST(TestEmpty, Empty) {
+    TrivialVector<int> vec;
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestEmpty, NotEmpty) {
+    TrivialVector<int> vec(1);
+    EXPECT_FALSE(vec.empty());
+}
+
+TEST(TestSize, Empty) {
+    TrivialVector<int> vec;
+    EXPECT_EQ(vec.size(), 0);
+}
+
+TEST(TestSize, NotEmpty) {
+    auto sz = 2;
+    TrivialVector<int> vec(sz);
+    EXPECT_EQ(vec.size(), sz);
+    EXPECT_EQ(vec.size(), std::ranges::distance(vec.begin(), vec.end()));
 }
