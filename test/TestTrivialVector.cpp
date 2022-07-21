@@ -7,6 +7,19 @@
 using Attractadore::InlineTrivialVector;
 using Attractadore::TrivialVector;
 
+namespace Attractadore::TrivialVectorNameSpace {
+template<typename T, unsigned InlineCapacity>
+std::ostream& operator<<(
+    std::ostream& os,
+    const InlineTrivialVector<T, InlineCapacity>& vec
+) {
+    os << "{";
+    std::ranges::copy(vec, std::ostream_iterator<T>{os, ", "});
+    os << "}";
+    return os;
+}
+}
+
 #ifndef NDEBUG
 #define EXPECT_ASSERT(statement) EXPECT_DEATH(statement, "")
 #else
@@ -1128,4 +1141,580 @@ TEST(TestClear, NonEmpty) {
     TrivialVector<int> vec(5);
     vec.clear();
     EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestEmplace, ValueEmpty) {
+    TrivialVector<int> vec;
+    int val = 5;
+    auto it = vec.emplace(vec.end(), val);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{val}))
+        << "Vec is " << vec;
+}
+
+TEST(TestEmplace, ValueFrontWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    int val = 5;
+    auto it = vec.emplace(vec.begin(), val);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{val, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestEmplace, ValueMidWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    int val = 5;
+    auto it = vec.emplace(iit, val);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, val, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestEmplace, ValueEndWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    int val = 5;
+    auto it = vec.emplace(vec.end(), val);
+    EXPECT_EQ(it, vec.end() - 1);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 2, 3, 4, val}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValueEmpty) {
+    TrivialVector<int> vec;
+    int val = 5;
+    auto it = vec.insert(vec.end(), val);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{val}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValueFrontWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    int val = 5;
+    auto it = vec.insert(vec.begin(), val);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{val, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValueMidWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    int val = 5;
+    auto it = vec.insert(iit, val);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, val, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValueEndWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    int val = 5;
+    auto it = vec.insert(vec.end(), val);
+    EXPECT_EQ(it, vec.end() - 1);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 2, 3, 4, val}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SpaceEmpty) {
+    TrivialVector<int> vec;
+    auto cnt = 5;
+    auto it = vec.insert_space(vec.end(), cnt);
+    EXPECT_EQ(it, vec.begin());
+    std::ranges::fill_n(it, cnt, 0);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{0, 0, 0, 0, 0}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, NoSpaceEmpty) {
+    TrivialVector<int> vec;
+    auto it = vec.insert_space(vec.end(), 0);
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(vec.empty())
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SpaceFrontWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto cnt = 2;
+    auto it = vec.insert_space(vec.begin(), cnt);
+    EXPECT_EQ(it, vec.begin());
+    std::ranges::fill_n(it, cnt, 0);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{0, 0, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SpaceMidWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto cnt = 2;
+    auto it = vec.insert_space(iit, cnt);
+    EXPECT_EQ(it, vec.begin() + idx);
+    std::ranges::fill_n(it, cnt, 0);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 0, 0, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SpaceEndWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto cnt = 2;
+    auto it = vec.insert_space(vec.end(), cnt);
+    EXPECT_EQ(it, vec.end() - cnt);
+    std::ranges::fill_n(it, cnt, 0);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 2, 3, 4, 0, 0}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValuesEmpty) {
+    TrivialVector<int> vec;
+    auto cnt = 5;
+    auto val = 5;
+    auto it = vec.insert(vec.end(), cnt, val);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{val, val, val, val, val}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ZeroValuesEmpty) {
+    TrivialVector<int> vec;
+    auto val = 5;
+    auto it = vec.insert(vec.end(), 0, val);
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(vec.empty())
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValuesFrontWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto val = 5;
+    auto cnt = 2;
+    auto it = vec.insert(vec.begin(), cnt, val);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{val, val, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValuesMidWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto val = 5;
+    auto cnt = 2;
+    auto it = vec.insert(iit, cnt, 5);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, val, val, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, ValuesEndWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto val = 5;
+    auto cnt = 2;
+    auto it = vec.insert(vec.end(), cnt, val);
+    EXPECT_EQ(it, vec.end() - cnt);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 2, 3, 4, val, val}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, FwdIterEmpty) {
+    std::list lst = {1, 2, 3, 4};
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, lst))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, FwdIterEmptyRange) {
+    std::list<int> lst;
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestInsert, FwdIterFront) {
+    std::list lst = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.begin(), lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{4, 3, 2, 1, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, FwdIterFrontEmptyRange) {
+    std::list<int> lst;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.begin(), lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, FwdIterMid) {
+    std::list lst = {1, 2, 3, 4};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 1, 2, 3, 4, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, FwdIterMidEmptyRange) {
+    std::list<int> lst;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, FwdIterBack) {
+    std::list lst = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.end(), lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.end() - lst.size());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 2, 3, 4, 4, 3, 2, 1}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, FwdIterBackEmptyRange) {
+    std::list<int> lst;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.end(), lst.begin(), lst.end());
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, RAIterEmpty) {
+    std::vector data = {1, 2, 3, 4};
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), data.begin(), data.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, data))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, RAIterEmptyRange) {
+    std::vector<int> data;
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), data.begin(), data.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestInsert, RAIterFront) {
+    std::vector data = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.begin(), data.begin(), data.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{4, 3, 2, 1, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, RAIterFrontEmptyRange) {
+    std::vector<int> data;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.begin(), data.begin(), data.end());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, RAIterMid) {
+    std::vector data = {1, 2, 3, 4};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, data.begin(), data.end());
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 1, 2, 3, 4, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, RAIterMidEmptyRange) {
+    std::vector<int> data;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, data.begin(), data.end());
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, RAIterBack) {
+    std::vector data = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.end(), data.begin(), data.end());
+    EXPECT_EQ(it, vec.end() - data.size());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 2, 3, 4, 4, 3, 2, 1}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, RAIterBackEmptyRange) {
+    std::vector<int> data;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.end(), data.begin(), data.end());
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, UnsizedRangeEmpty) {
+    std::list lst = {1, 2, 3, 4};
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, lst))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, UnsizedRangeEmptyRange) {
+    std::list<int> lst;
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestInsert, UnsizedRangeFront) {
+    std::list lst = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.begin(), std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{4, 3, 2, 1, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, UnsizedRangeFrontEmptyRange) {
+    std::list<int> lst;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.begin(), std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, UnsizedRangeMid) {
+    std::list lst = {1, 2, 3, 4};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 1, 2, 3, 4, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, UnsizedRangeMidEmptyRange) {
+    std::list<int> lst;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, UnsizedRangeBack) {
+    std::list lst = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.end(), std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.end() - lst.size());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 2, 3, 4, 4, 3, 2, 1}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, UnsizedRangeBackEmptyRange) {
+    std::list<int> lst;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.end(), std::ranges::subrange(lst));
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SizedRangeEmpty) {
+    std::vector data = {1, 2, 3, 4};
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), data);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, data))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SizedRangeEmptyRange) {
+    std::vector<int> data;
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), data);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestInsert, SizedRangeFront) {
+    std::vector data = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.begin(), data);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{4, 3, 2, 1, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SizedRangeFrontEmptyRange) {
+    std::vector<int> data;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.begin(), data);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SizedRangeMid) {
+    std::vector data = {1, 2, 3, 4};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, data);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 1, 2, 3, 4, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SizedRangeMidEmptyRange) {
+    std::vector<int> data;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, data);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SizedRangeBack) {
+    std::vector data = {4, 3, 2, 1};
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.end(), data);
+    EXPECT_EQ(it, vec.end() - data.size());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 2, 3, 4, 4, 3, 2, 1}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, SizedRangeBackEmptyRange) {
+    std::vector<int> data;
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.end(), data);
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, InitListEmpty) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), {1, 2, 3, 4});
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, InitListEmptyRange) {
+    TrivialVector<int> vec;
+    auto it = vec.insert(vec.end(), {});
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestInsert, InitListFront) {
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.begin(), {4, 3, 2, 1});
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{4, 3, 2, 1, 1, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, InitListFrontEmptyRange) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.begin(), {});
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, InitListMid) {
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, {1, 2, 3, 4});
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 1, 2, 3, 4, 2, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, InitListMidEmptyRange) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto iit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), iit);
+    auto it = vec.insert(iit, {});
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, InitListBack) {
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto it = vec.insert(vec.end(), {4, 3, 2, 1});
+    EXPECT_EQ(it, vec.end() - 4);
+    EXPECT_TRUE(std::ranges::equal(
+        vec, std::array{1, 2, 3, 4, 4, 3, 2, 1}))
+        << "Vec is " << vec;
+}
+
+TEST(TestInsert, InitListBackEmptyRange) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.insert(vec.end(), {});
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(vec, arr))
+        << "Vec is " << vec;
 }
