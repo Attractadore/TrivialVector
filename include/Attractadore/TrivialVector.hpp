@@ -642,13 +642,15 @@ public:
     }
 
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-        requires std::convertible_to<std::iter_value_t<Iter>, value_type>
+        requires std::convertible_to<
+            std::iter_value_t<Iter>, value_type>
     constexpr iterator append(Iter first, Sent last) {
         return insert(end(), first, last);
     }
 
     template<std::ranges::input_range R>
-        requires std::convertible_to<std::ranges::range_value_t<R>, value_type>
+        requires std::convertible_to<
+            std::ranges::range_value_t<R>, value_type>
     constexpr iterator append(R&& r) {
         return insert(end(), std::forward<R>(r));
     }
@@ -657,24 +659,31 @@ public:
         return insert(end(), init);
     }
 
-private:
-    constexpr reference emplace_back();
-
-public:
-    constexpr reference emplace_back(const value_type& value) {
-        return push_back();
+    template<typename... Args>
+        requires std::constructible_from<value_type, Args&&...>
+    constexpr reference emplace_back(Args&&... args) {
+        [[likely]]
+        if (size() < capacity()) {
+            return data()[m_size++] =
+                value_type(std::forward<Args>(args)...);
+        } else {
+            auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
+            std::ranges::copy_n(data(), size(), new_data);
+            deallocate();
+            m_data = new_data;
+            m_capacity = new_capacity;
+            return data()[m_size++] =
+                value_type(std::forward<Args>(args)...);
+        }
     }
 
     constexpr void push_back(const value_type& value) {
-        return emplace_back() = value;
+        emplace_back(value);
     }
 
-private:
-    constexpr reference write_back() noexcept;
-
-public:
-    constexpr reference write_back(const value_type& value) noexcept {
-        return write_back() = value;
+    constexpr reference shove_back(const value_type& value) noexcept {
+        assert(size() < capacity());
+        return data()[m_size++] = value;
     }
 
     constexpr iterator erase(const_iterator pos) noexcept;
@@ -1169,26 +1178,6 @@ constexpr auto TRIVIAL_VECTOR_HEADER::erase(
         m_size -= count;
     }
     return it;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::emplace_back() -> reference {
-    [[likely]]
-    if (size() < capacity()) {
-        return data()[m_size++];
-    } else {
-        auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
-        std::ranges::copy_n(data(), size(), new_data);
-        deallocate();
-        m_data = new_data;
-        m_capacity = new_capacity;
-        return data()[m_size++];
-    }
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::write_back() noexcept -> reference {
-    return data()[m_size++];
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
