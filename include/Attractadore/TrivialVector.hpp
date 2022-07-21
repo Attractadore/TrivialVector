@@ -1,10 +1,11 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <limits>
 #include <memory>
-#include <utility>
 #include <stdexcept>
+#include <utility>
 
 namespace Attractadore::TrivialVectorNameSpace {
 template<std::input_iterator I, std::sentinel_for<I> SI, std::weakly_incrementable O, std::sentinel_for<O> SO>
@@ -43,7 +44,10 @@ protected:
     using Ptr = AllocTraits::pointer;
     using PtrTraits = std::pointer_traits<Ptr>;
     using ConstPtr = AllocTraits::const_pointer;
-    using SizeT = unsigned;
+    //using SizeT = unsigned;
+    //using SizeT = int;
+    using SizeT = size_t;
+    //using SizeT = ssize_t;
 
     Ptr         m_data;
     SizeT       m_capacity;

@@ -21,9 +21,9 @@ std::ostream& operator<<(
 }
 
 #ifndef NDEBUG
-#define EXPECT_ASSERT(statement) EXPECT_DEATH(statement, "")
+#define EXPECT_ASSERT(statement) EXPECT_DEBUG_DEATH(statement, "")
 #else
-#define EXPECT_ASSERT(statement) EXPECT_DEATH({}, "")
+#define EXPECT_ASSERT(statement) EXPECT_DEBUG_DEATH({}, "")
 #endif
 #define EXPECT_NO_ASSERT(statement) EXPECT_TRUE(true)
 
