@@ -97,13 +97,9 @@ protected:
                 } else {
                     allocator() = other.get_allocator();
                 }
-                write(other);
-            } else {
-                assign(other);
             }
-        } else {
-            assign(other);
         }
+        assign(other);
         return *this;
     }
 
@@ -314,38 +310,6 @@ public:
 
     constexpr void assign(std::initializer_list<value_type> init) {
         assign(init.begin(), init.end());
-    }
-
-    constexpr void write(size_t count, const value_type& value) noexcept {
-        adjust(count);
-        std::ranges::fill(*this, value);
-    }
-
-    template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
-        requires std::convertible_to<
-            std::iter_value_t<Iter>, value_type>
-    constexpr void write(Iter first, Sent last) noexcept {
-        auto new_end = std::ranges::copy(first, last, data()).out;
-        m_size = std::ranges::distance(data(), new_end);
-    }
-
-    template<std::ranges::input_range R>
-        requires std::convertible_to<
-            std::ranges::range_value_t<R>, value_type>
-    constexpr void write(R&& r) noexcept {
-        if constexpr (std::ranges::sized_range<R>) {
-            auto new_size = std::ranges::size(r);
-            adjust(new_size);
-            std::ranges::copy(std::forward<R>(r), data());
-        } else {
-            write(std::ranges::begin(r), std::ranges::end(r));
-        }
-    }
-
-    constexpr void write(
-        std::initializer_list<value_type> init
-    ) noexcept {
-        write(init.begin(), init.end());
     }
 
     constexpr const allocator_type& get_allocator() const noexcept { return *this; }
@@ -952,11 +916,7 @@ private:
             m_size =
                 std::exchange(other.m_size, 0);
         } else {
-            if constexpr (max_inline_size() >= other.max_inline_size()) {
-                this->write(other);
-            } else {
-                this->assign(other);
-            }
+            this->assign(other);
             other.clear();
         }
     }
