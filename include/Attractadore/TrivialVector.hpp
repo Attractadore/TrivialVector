@@ -471,7 +471,7 @@ public:
     }
 
     constexpr void clear() noexcept {
-        adjust(0);
+        m_size = 0;
     }
 
 protected:
@@ -690,17 +690,39 @@ public:
         return data()[m_size++] = value;
     }
 
-    constexpr iterator erase(const_iterator pos) noexcept;
-    constexpr iterator erase(const_iterator first, const_iterator last) noexcept;
-    template<typename R> requires
-        std::ranges::contiguous_range<R> and
-        std::ranges::common_range<R> and
-        std::convertible_to<std::ranges::iterator_t<R>, const_iterator>
-    constexpr iterator erase(R&& r) noexcept {
-        return erase(std::ranges::begin(r), std::ranges::end(r)); }
+    constexpr iterator erase(const_iterator pos) noexcept {
+        assert(pos < end());
+        auto idx = std::ranges::distance(begin(), pos);
+        auto it = begin() + idx;
+        std::ranges::copy(pos + 1, end(), it);
+        m_size--;
+        return it;
+    }
 
-    constexpr void pop_back() noexcept;
-    constexpr value_type pop() noexcept;
+    constexpr iterator erase(
+        const_iterator first, const_iterator last
+    ) noexcept {
+        assert(first <= end() and first <= last and last <= end());
+        auto idx = std::ranges::distance(begin(), first);
+        auto it = begin() + idx;
+        if (first != last) {
+            auto new_end = std::ranges::copy(last, end(), it).out;
+            m_size = std::ranges::distance(begin(), new_end);
+        }
+        return it;
+    }
+
+    template<std::ranges::input_range R> requires
+        std::convertible_to<std::ranges::iterator_t<R>, const_iterator> and
+        std::convertible_to<std::ranges::sentinel_t<R>, const_iterator>
+    constexpr iterator erase(R&& r) noexcept {
+        return erase(std::ranges::begin(r), std::ranges::end(r));
+    }
+
+    constexpr value_type pop_back() noexcept {
+        assert(not empty());
+        return data()[--m_size];
+    }
 
     constexpr void resize(size_type new_size);
     constexpr void resize(size_type new_size, const value_type& value);
@@ -709,7 +731,6 @@ public:
         std::ranges::common_range<R> and
         std::convertible_to<std::ranges::iterator_t<R>, const_iterator>
     constexpr void resize(R&& r) noexcept;
-    constexpr void adjust(size_type new_size) noexcept;
     constexpr void fit(size_type new_size);
 
 protected:
@@ -1157,44 +1178,6 @@ constexpr void TRIVIAL_VECTOR_HEADER::reallocate(size_type new_capacity) {
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::erase(
-    const_iterator pos
-) noexcept -> iterator {
-    auto idx = std::ranges::distance(begin(), pos);
-    assert(idx < size());
-    auto it = begin() + idx;
-    std::ranges::copy_backward(pos + 1, end(), it);
-    m_size--;
-    return it;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::erase(
-    const_iterator first, const_iterator last
-) noexcept -> iterator {
-    auto idx = std::ranges::distance(begin(), first);
-    assert(idx <= size());
-    auto it = begin() + idx;
-    if (first != last) {
-        auto count = std::ranges::distance(first, last);
-        assert(idx + count <= size());
-        std::ranges::copy_backward(last, end(), it);
-        m_size -= count;
-    }
-    return it;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::pop_back() noexcept {
-    m_size--;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr auto TRIVIAL_VECTOR_HEADER::pop() noexcept -> value_type {
-    return data()[--m_size];
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr void TRIVIAL_VECTOR_HEADER::resize(size_type new_size) {
     if (capacity() < new_size) {
         auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
@@ -1226,12 +1209,6 @@ constexpr void TRIVIAL_VECTOR_HEADER::resize(R&& r) noexcept {
         std::ranges::copy(std::forward<R>(r), begin());
     }
     m_size = std::ranges::size(r);
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::adjust(size_type new_size) noexcept {
-    assert(new_size <= capacity());
-    m_size = new_size;
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE

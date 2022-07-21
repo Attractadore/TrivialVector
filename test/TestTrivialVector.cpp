@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <list>
+#include <ranges>
 
 using Attractadore::InlineTrivialVector;
 using Attractadore::TrivialVector;
@@ -1800,4 +1801,144 @@ TEST(TestShoveBack, Realloc) {
     EXPECT_ASSERT(
         vec.shove_back(val);
     );
+}
+
+TEST(TestErase, SingleFront) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.erase(vec.begin());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin() + 1, arr.end()))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, SingleMid) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto eit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), eit);
+    auto it = vec.erase(eit);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 3, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, SingleBack) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.erase(vec.end() - 1);
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin(), arr.end() - 1))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, SingleEnd) {
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.erase(vec.end())
+    );
+}
+
+TEST(TestErase, Front) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.erase(vec.begin(), vec.begin() + 2);
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin() + 2, arr.end()))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, Mid) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto eit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), eit);
+    auto it = vec.erase(eit, eit + 2);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, Back) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.erase(vec.end() - 2, vec.end());
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin(), arr.end() - 2))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, IterEmptyRange) {
+    TrivialVector<int> vec;
+    vec.erase(vec.begin(), vec.end());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestErase, RangeFront) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.erase(vec | std::views::take(2));
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin() + 2, arr.end()))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, RangeMid) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto v =
+        vec |
+        std::views::drop(1) |
+        std::views::take(2);
+    auto idx = std::ranges::distance(vec.begin(), v.begin());
+    auto it = vec.erase(v);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 4}))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, RangeBack) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto v =
+        vec |
+        std::views::drop(2);
+    auto it = vec.erase(v);
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin(), arr.end() - 2))
+        << "Vec is " << vec;
+}
+
+TEST(TestErase, EmptyRange) {
+    TrivialVector<int> vec;
+    vec.erase(vec);
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestPopBack, Empty) {
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.pop_back()
+    );
+}
+
+TEST(TestPopBack, PopBack) {
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto old_back = vec.back();
+    auto old_size = vec.size();
+    auto pop_val = vec.pop_back();
+    EXPECT_EQ(old_back, pop_val);
+    EXPECT_EQ(vec.size(), old_size - 1);
 }
