@@ -4,6 +4,7 @@
 #include <cassert>
 #include <limits>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <utility>
 
@@ -259,10 +260,24 @@ public:
         return m_size;
     }
 
+    constexpr size_type size_bytes() const noexcept {
+        return size() * sizeof(value_type);
+    }
+
     static constexpr size_type max_size() noexcept {
         return std::min<size_type>(
             std::numeric_limits<SizeT>::max(),
             std::numeric_limits<size_type>::max() / sizeof(value_type));
+    }
+
+    constexpr std::span<const std::byte> as_bytes() const noexcept {
+        return std::span{
+            reinterpret_cast<const std::byte*>(data()), size_bytes()};
+    }
+
+    constexpr std::span<std::byte> as_bytes() noexcept {
+        return std::span{
+            reinterpret_cast<std::byte*>(data()), size_bytes()};
     }
 
     constexpr size_type reserve(size_type new_capacity) {
@@ -270,6 +285,10 @@ public:
             reallocate(new_capacity);
         }
         return capacity();
+    }
+
+    constexpr size_type reserve_more(size_type additional_capacity) {
+        return reserve(size() + additional_capacity);
     }
 
     constexpr size_type capacity() const noexcept {
@@ -348,7 +367,7 @@ public:
         return emplace(pos, value);
     }
 
-    constexpr iterator insert_space(
+    constexpr iterator place(
         const_iterator pos, size_type count
     ) {
         if (count) {
@@ -447,6 +466,10 @@ public:
 
     constexpr iterator append(size_type count, const value_type& value) {
         return insert(end(), count, value);
+    }
+
+    constexpr iterator place_back(size_type count) {
+        return place(end(), count);
     }
 
     template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>

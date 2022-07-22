@@ -864,50 +864,78 @@ TEST(TestInsert, ValueEndWithRealloc) {
         << "Vec is " << vec;
 }
 
-TEST(TestInsert, SpaceEmpty) {
+TEST(TestPlace, Empty) {
     TrivialVector<int> vec;
     auto cnt = 5;
-    auto it = vec.insert_space(vec.end(), cnt);
+    auto it = vec.place(vec.end(), cnt);
     EXPECT_EQ(it, vec.begin());
     std::ranges::fill_n(it, cnt, 0);
     EXPECT_TRUE(std::ranges::equal(vec, std::array{0, 0, 0, 0, 0}))
         << "Vec is " << vec;
 }
 
-TEST(TestInsert, NoSpaceEmpty) {
+TEST(TestPlace, NoSpaceEmpty) {
     TrivialVector<int> vec;
-    auto it = vec.insert_space(vec.end(), 0);
+    auto it = vec.place(vec.end(), 0);
     EXPECT_EQ(it, vec.end());
     EXPECT_TRUE(vec.empty())
         << "Vec is " << vec;
 }
 
-TEST(TestInsert, SpaceFrontWithRealloc) {
+TEST(TestPlace, FrontWithRealloc) {
     InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
     auto cnt = 2;
-    auto it = vec.insert_space(vec.begin(), cnt);
+    auto it = vec.place(vec.begin(), cnt);
     EXPECT_EQ(it, vec.begin());
     std::ranges::fill_n(it, cnt, 0);
     EXPECT_TRUE(std::ranges::equal(vec, std::array{0, 0, 1, 2, 3, 4}))
         << "Vec is " << vec;
 }
 
-TEST(TestInsert, SpaceMidWithRealloc) {
+TEST(TestPlace, MidWithRealloc) {
     InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
     auto iit = std::ranges::find(vec, 2);
     auto idx = std::ranges::distance(vec.begin(), iit);
     auto cnt = 2;
-    auto it = vec.insert_space(iit, cnt);
+    auto it = vec.place(iit, cnt);
     EXPECT_EQ(it, vec.begin() + idx);
     std::ranges::fill_n(it, cnt, 0);
     EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 0, 0, 2, 3, 4}))
         << "Vec is " << vec;
 }
 
-TEST(TestInsert, SpaceEndWithRealloc) {
+TEST(TestPlace, EndWithRealloc) {
     InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
     auto cnt = 2;
-    auto it = vec.insert_space(vec.end(), cnt);
+    auto it = vec.place(vec.end(), cnt);
+    EXPECT_EQ(it, vec.end() - cnt);
+    std::ranges::fill_n(it, cnt, 0);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 2, 3, 4, 0, 0}))
+        << "Vec is " << vec;
+}
+
+TEST(TestPlaceBack, Empty) {
+    TrivialVector<int> vec;
+    auto cnt = 5;
+    auto it = vec.place_back(cnt);
+    EXPECT_EQ(it, vec.begin());
+    std::ranges::fill_n(it, cnt, 0);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{0, 0, 0, 0, 0}))
+        << "Vec is " << vec;
+}
+
+TEST(TestPlaceBack, NoSpaceEmpty) {
+    TrivialVector<int> vec;
+    auto it = vec.place_back(0);
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(vec.empty())
+        << "Vec is " << vec;
+}
+
+TEST(TestPlaceBack, EndWithRealloc) {
+    InlineTrivialVector<int, 4> vec = {1, 2, 3, 4};
+    auto cnt = 2;
+    auto it = vec.place_back(cnt);
     EXPECT_EQ(it, vec.end() - cnt);
     std::ranges::fill_n(it, cnt, 0);
     EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 2, 3, 4, 0, 0}))
@@ -2011,4 +2039,11 @@ TEST(TestCompare, GreaterEqual) {
     EXPECT_GE(vec2, vec1);
     vec2.front() = 5;
     EXPECT_GE(vec2, vec1);
+}
+
+TEST(AsBytes, AsBytes) {
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto bytes = vec.as_bytes();
+    EXPECT_EQ(std::span{vec}.size_bytes(), bytes.size());
+    EXPECT_EQ(reinterpret_cast<std::byte*>(vec.data()), bytes.data());
 }
