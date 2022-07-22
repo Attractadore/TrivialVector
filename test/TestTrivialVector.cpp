@@ -1833,6 +1833,44 @@ TEST(TestPopBack, PopBack) {
     EXPECT_EQ(vec.size(), old_size - 1);
 }
 
+TEST(TestSwapPop, Front) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.swap_pop(vec.begin());
+    EXPECT_EQ(it, vec.begin());
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{4, 2, 3}))
+        << "Vec is " << vec;
+}
+
+TEST(TestSwapPop, Mid) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto eit = std::ranges::find(vec, 2);
+    auto idx = std::ranges::distance(vec.begin(), eit);
+    auto it = vec.swap_pop(eit);
+    EXPECT_EQ(it, vec.begin() + idx);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 4, 3}))
+        << "Vec is " << vec;
+}
+
+TEST(TestSwapPop, Back) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto it = vec.swap_pop(vec.end() - 1);
+    EXPECT_EQ(it, vec.end());
+    EXPECT_TRUE(std::ranges::equal(
+        vec.begin(), vec.end(),
+        arr.begin(), arr.end() - 1))
+        << "Vec is " << vec;
+}
+
+TEST(TestSwapPop, End) {
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.swap_pop(vec.end())
+    );
+}
+
 TEST(TestResize, NoRealloc) {
     std::array arr = {1, 2, 3, 4};
     TrivialVector<int> vec(arr);

@@ -551,6 +551,13 @@ public:
         return data()[--m_size];
     }
 
+    constexpr iterator swap_pop(const_iterator it) noexcept {
+        assert(not empty());
+        auto idx = std::ranges::distance(begin(), it);
+        std::ranges::swap(data()[idx], data()[--m_size]);
+        return begin() + idx;
+    }
+
     constexpr void resize(size_type new_size) {
         if (capacity() < new_size) {
             auto [new_data, new_capacity] =
