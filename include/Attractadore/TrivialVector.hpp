@@ -8,15 +8,6 @@
 #include <utility>
 
 namespace Attractadore::TrivialVectorNameSpace {
-template<std::input_iterator I, std::sentinel_for<I> SI, std::weakly_incrementable O, std::sentinel_for<O> SO>
-    requires std::indirectly_copyable<I, O>
-constexpr std::ranges::copy_result<I, O> copy_some(I first, SI last, O result_first, SO result_last) {
-    for (; result_first != result_last and first != last ; ++result_first, ++first) {
-        *result_first = *first;
-    }
-    return {.in = first, .out = result_first};
-}
-
 template<typename P>
 class VectorIterator: std::contiguous_iterator_tag {
     using Element = std::pointer_traits<P>::element_type;
@@ -403,11 +394,9 @@ public:
             auto front_size = std::ranges::distance(begin(), pos);
             auto new_size = size();
             auto append_some = [&] {
-                auto [new_first, new_end] = copy_some(
-                    first, last,
-                    data() + new_size, data() + capacity());
-                first = new_first;
-                new_size = std::ranges::distance(data(), new_end);
+                for (; first != last and new_size != capacity(); ++first) {
+                    data()[new_size++] = *first;
+                }
             };
             append_some();
             while (first != last) {
