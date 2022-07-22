@@ -471,7 +471,7 @@ public:
     }
 
     constexpr void clear() noexcept {
-        m_size = 0;
+        truncate(0);
     }
 
 protected:
@@ -724,14 +724,58 @@ public:
         return data()[--m_size];
     }
 
-    constexpr void resize(size_type new_size);
-    constexpr void resize(size_type new_size, const value_type& value);
-    template<typename R> requires
-        std::ranges::contiguous_range<R> and
-        std::ranges::common_range<R> and
-        std::convertible_to<std::ranges::iterator_t<R>, const_iterator>
-    constexpr void resize(R&& r) noexcept;
-    constexpr void fit(size_type new_size);
+    constexpr void resize(size_type new_size) {
+        if (capacity() < new_size) {
+            auto [new_data, new_capacity] =
+                allocate_for_size(m_size + 1);
+            std::ranges::copy(*this, new_data);
+            m_data = new_data;
+            m_capacity = new_capacity;
+        }
+        m_size = new_size;
+    }
+
+    constexpr void resize(
+        size_type new_size, const value_type& value
+    ) {
+        auto old_size = size();
+        resize(new_size);
+        if (new_size > old_size) {
+            std::ranges::fill(data() + old_size, data() + new_size, value);
+        }
+    }
+
+    constexpr void resize(
+        const_iterator first, const_iterator last
+    ) noexcept {
+        assert(begin() <= first and first <= last and last <= end());
+        if (first != begin()) {
+            std::ranges::copy(first, last, begin());
+        }
+        m_size = std::ranges::distance(first, last);
+    }
+
+    template<std::ranges::input_range R> requires
+        std::convertible_to<std::ranges::iterator_t<R>, const_iterator> and
+        std::convertible_to<std::ranges::sentinel_t<R>, const_iterator>
+    constexpr void resize(R&& r) noexcept {
+        resize(std::ranges::begin(r), std::ranges::end(r));
+    }
+
+    constexpr void truncate(size_type new_size) noexcept {
+        assert(new_size <= size());
+        m_size = new_size;
+    }
+
+    constexpr void fit(size_type new_size) {
+        if (capacity() < new_size) {
+            auto [new_data, new_capacity] =
+                allocate_for_size(new_size);
+            m_data = new_data;
+            m_capacity = new_capacity;
+        }
+        m_size = new_size;
+    }
 
 protected:
     struct AllocateResult {
@@ -1178,50 +1222,6 @@ constexpr void TRIVIAL_VECTOR_HEADER::reallocate(size_type new_capacity) {
 }
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::resize(size_type new_size) {
-    if (capacity() < new_size) {
-        auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
-        std::ranges::copy_n(data(), size(), new_data);
-        m_data = new_data;
-        m_capacity = new_capacity;
-    }
-    m_size = new_size;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::resize(size_type new_size, const value_type& value) {
-    auto old_size = size();
-    resize(new_size);
-    auto idx = std::min(old_size, new_size);
-    std::ranges::fill(data() + idx, data() + new_size, value);
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-template<typename R> requires
-    std::ranges::contiguous_range<R> and
-    std::ranges::common_range<R> and
-    std::convertible_to<
-        std::ranges::iterator_t<R>,
-        typename TRIVIAL_VECTOR_HEADER::const_iterator>
-constexpr void TRIVIAL_VECTOR_HEADER::resize(R&& r) noexcept {
-    assert(r.begin() >= begin() and r.end() <= end());
-    if (r.begin() != begin()) {
-        std::ranges::copy(std::forward<R>(r), begin());
-    }
-    m_size = std::ranges::size(r);
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::fit(size_type new_size) {
-    if (capacity() < new_size) {
-        auto [new_data, new_capacity] = allocate_for_size(new_size);
-        m_data = new_data;
-        m_capacity = new_capacity;
-    }
-    m_size = new_size;
-}
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr auto TRIVIAL_VECTOR_HEADER::inline_data() const noexcept -> const T* {
     return static_cast<const InlineTrivialVector<T, 1, Allocator>*>(this)->inline_data();
 }
@@ -1245,22 +1245,29 @@ void swap(
 ) noexcept(noexcept(lhs.swap(rhs))) {
     lhs.swap(rhs);
 }
-}
 
-namespace std {
-template<typename T, typename Allocator, typename U>
-constexpr TRIVIAL_VECTOR_HEADER::size_type erase(TRIVIAL_VECTOR_HEADER& vec, const U& value) {
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr TRIVIAL_VECTOR_HEADER::size_type erase(
+    TRIVIAL_VECTOR_HEADER& vec, const T& value
+) noexcept {
     auto old_size = vec.size();
-    auto new_size = std::ranges::remove(vec, value).size();
-    vec.adjust(new_size);
+    auto new_size = std::ranges::size(
+        std::ranges::remove(vec, value)
+    );
+    vec.truncate(new_size);
     return old_size - new_size;
 }
 
 template<typename T, typename Allocator, typename Pred>
-constexpr TRIVIAL_VECTOR_HEADER::size_type erase_if(TRIVIAL_VECTOR_HEADER& vec, Pred pred) {
+    requires std::same_as<std::invoke_result_t<Pred, T>, bool> 
+constexpr TRIVIAL_VECTOR_HEADER::size_type erase_if(
+    TRIVIAL_VECTOR_HEADER& vec, Pred pred
+) {
     auto old_size = vec.size();
-    auto new_size = std::ranges::remove_if(vec, std::move(pred)).size();
-    vec.adjust(new_size);
+    auto new_size = std::ranges::size(
+        std::ranges::remove_if(vec, std::move(pred))
+    );
+    vec.truncate(new_size);
     return old_size - new_size;
 }
 }

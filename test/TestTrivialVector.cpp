@@ -1942,3 +1942,147 @@ TEST(TestPopBack, PopBack) {
     EXPECT_EQ(old_back, pop_val);
     EXPECT_EQ(vec.size(), old_size - 1);
 }
+
+TEST(TestResize, NoRealloc) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto old_capacity = vec.capacity();
+    vec.resize(vec.capacity());
+    EXPECT_EQ(vec.capacity(), old_capacity);
+    EXPECT_EQ(vec.size(), vec.capacity());
+    EXPECT_TRUE(
+        std::ranges::equal(vec | std::views::take(arr.size()), arr)
+    );
+}
+
+TEST(TestResize, WithRealloc) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto old_capacity = vec.capacity();
+    auto new_size = 2 * vec.capacity();
+    vec.resize(new_size);
+    EXPECT_GE(vec.capacity(), new_size);
+    EXPECT_EQ(vec.size(), new_size);
+    EXPECT_TRUE(
+        std::ranges::equal(vec | std::views::take(arr.size()), arr)
+    );
+}
+
+TEST(TestResize, Pad) {
+    InlineTrivialVector<int, 4> vec;
+    auto pad = 1;
+    auto old_capacity = vec.capacity();
+    vec.resize(vec.capacity(), pad);
+    std::vector<int> data(vec.capacity(), pad);
+    EXPECT_TRUE(std::ranges::equal(vec, data));
+}
+
+TEST(TestResize, NoPad) {
+    InlineTrivialVector<int, 4> vec(4, 0);
+    auto pad = 1;
+    vec.resize(1, pad);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{0}));
+}
+
+TEST(TestResize, EmptyToEmptyIterRange) {
+    InlineTrivialVector<int, 4> vec;
+    vec.resize(vec.begin(), vec.end());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestResize, ToEmptyIterRange) {
+    InlineTrivialVector<int, 4> vec(4);
+    vec.resize(vec.begin(), vec.begin());
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestResize, IterRange) {
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto b = std::ranges::find(vec, 2);
+    auto e = std::ranges::find(vec, 4);
+    vec.resize(b, e);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{2, 3}));
+}
+
+TEST(TestResize, EmptyToEmptyRange) {
+    TrivialVector<int> vec;
+    vec.resize(vec);
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestResize, ToEmptyRange) {
+    TrivialVector<int> vec(4);
+    vec.resize(vec | std::views::take(0));
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestResize, Range) {
+    TrivialVector<int> vec = {1, 2, 3, 4};
+    auto v = vec |
+        std::views::drop(1) |
+        std::views::take(2);
+    vec.resize(v);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{2, 3}));
+}
+
+TEST(TestTruncate, Empty) {
+    TrivialVector<int> vec;
+    vec.truncate(0);
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestTruncate, ToSmaller) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto new_size = 3;
+    vec.truncate(new_size);
+    EXPECT_TRUE(
+        std::ranges::equal(vec, arr | std::views::take(vec.size()))
+    );
+}
+
+TEST(TestTruncate, ToSize) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    vec.truncate(vec.size());
+    EXPECT_TRUE(
+        std::ranges::equal(vec, arr)
+    );
+}
+
+TEST(TestTruncate, ToBigger) {
+    TrivialVector<int> vec;
+    EXPECT_ASSERT(
+        vec.truncate(vec.size() + 1)
+    );
+}
+
+TEST(TestFit, Empty) {
+    TrivialVector<int> vec;
+    vec.fit(0);
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TestFit, ToSmaller) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto new_size = 3;
+    vec.fit(new_size);
+    EXPECT_EQ(vec.size(), new_size);
+}
+
+TEST(TestFit, ToSize) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto new_size = vec.size();
+    vec.fit(vec.size());
+    EXPECT_EQ(vec.size(), new_size);
+}
+
+TEST(TestFit, ToBigger) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto new_size = vec.size() + 1;
+    vec.fit(new_size);
+    EXPECT_EQ(vec.size(), new_size);
+}
