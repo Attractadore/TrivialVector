@@ -197,13 +197,13 @@ public:
         constexpr bool propagate =
             AllocTraits::propagate_on_container_copy_assignment::value;
         if constexpr (propagate) {
-            if (not allocators_equal(other)) {
+            if (not allocators_equal(*this, other)) {
                 bool must_realloc =
                     not data_is_inlined() or
                     capacity() < other.size();
                 if (must_realloc) {
-                    auto [new_data, new_capacity] =
-                        other.allocate_for_size(other.size());
+                    auto new_capacity = other.size();
+                    auto new_data = other.allocate(new_capacity);
                     deallocate();
                     m_data = new_data;
                     m_capacity = new_capacity;
@@ -471,16 +471,16 @@ protected:
         const_iterator pos, size_t count, F do_assign
     ) {
         assert(count);
+        auto idx = std::ranges::distance(begin(), pos);
         auto new_size = size() + count;
-        auto [new_data, new_capacity] = allocate_for_size(new_size);
-        auto assign_begin = std::ranges::copy(begin(), pos, new_data).out;
-        auto assign_end = do_assign(assign_begin);
-        std::ranges::copy(pos, end(), assign_end);
-        deallocate();
-        m_data = new_data;
-        m_capacity = new_capacity;
+        grow_to(new_size, [&] (auto old_data, auto cnt, auto new_data) {
+            auto assign_begin =
+                std::ranges::copy_n(old_data, idx, new_data).out;
+            auto assign_end = do_assign(assign_begin);
+            std::ranges::copy(old_data + idx, old_data + cnt, assign_end);
+        });
         m_size = new_size;
-        return iterator{assign_begin};
+        return begin() + idx;
     }
 
 public:
@@ -556,12 +556,7 @@ public:
             };
             append_some();
             while (first != last) {
-                auto [new_data, new_capacity] =
-                    allocate_for_size(new_size + 1);
-                std::ranges::copy_n(data(), new_size, new_data);
-                deallocate();
-                m_data = new_data;
-                m_capacity = new_capacity;
+                grow(new_size + 1, new_size);
                 append_some();
             }
             std::ranges::rotate(
@@ -629,19 +624,12 @@ public:
     template<typename... Args>
         requires std::constructible_from<value_type, Args&&...>
     constexpr reference emplace_back(Args&&... args) {
-        [[likely]]
-        if (size() < capacity()) {
-            return data()[m_size++] =
-                value_type(std::forward<Args>(args)...);
-        } else {
-            auto [new_data, new_capacity] = allocate_for_size(m_size + 1);
-            std::ranges::copy_n(data(), size(), new_data);
-            deallocate();
-            m_data = new_data;
-            m_capacity = new_capacity;
-            return data()[m_size++] =
-                value_type(std::forward<Args>(args)...);
+        [[unlikely]]
+        if (size() == capacity()) {
+            grow_to(size() + 1);
         }
+        return data()[m_size++] =
+            value_type(std::forward<Args>(args)...);
     }
 
     constexpr void push_back(const value_type& value) {
@@ -696,12 +684,7 @@ public:
 
     constexpr void resize(size_type new_size) {
         if (capacity() < new_size) {
-            auto [new_data, new_capacity] =
-                allocate_for_size(m_size + 1);
-            std::ranges::copy(*this, new_data);
-            deallocate();
-            m_data = new_data;
-            m_capacity = new_capacity;
+            grow_to(new_size);
         }
         m_size = new_size;
     }
@@ -740,11 +723,7 @@ public:
 
     constexpr void fit(size_type new_size) {
         if (capacity() < new_size) {
-            auto [new_data, new_capacity] =
-                allocate_for_size(new_size);
-            deallocate();
-            m_data = new_data;
-            m_capacity = new_capacity;
+            grow_to(new_size, [] (auto, auto, auto) {});
         }
         m_size = new_size;
     }
@@ -754,59 +733,70 @@ public:
     };
 
 protected:
-    struct AllocateResult {
-        pointer     ptr;
-        size_type   n;
-    };
-
     constexpr Allocator& allocator() noexcept {
         return *this;
     }
 
-    constexpr bool allocators_equal(
-        const TrivialVectorHeader& other
-    ) const noexcept {
+    static constexpr bool allocators_equal(
+        const TrivialVectorHeader& lhs, const TrivialVectorHeader& rhs
+    ) noexcept {
         return
             AllocTraits::is_always_equal::value or
-            get_allocator() == other.get_allocator();
-    }
-
-    static constexpr AllocateResult allocate_for_size(
-        Allocator& alloc, size_t new_size
-    ) {
-        try {
-            auto new_capacity = std::bit_ceil(new_size);
-            return { allocate(alloc, new_capacity), new_capacity };
-        } catch (std::bad_alloc&) {
-            return { allocate(alloc, new_size), new_size };
-        }
-    }
-
-    constexpr AllocateResult allocate_for_size(size_t new_size) {
-        return allocate_for_size(allocator(), new_size);
-    }
-
-    static constexpr pointer allocate(Allocator& alloc, size_t new_capacity) {
-        return AllocTraits::allocate(alloc, new_capacity);
+            lhs.get_allocator() == rhs.get_allocator();
     }
 
     constexpr pointer allocate(size_t new_capacity) {
-        return allocate(allocator(), new_capacity);
+        return AllocTraits::allocate(allocator(), new_capacity);
     }
 
-    constexpr void reallocate(size_t new_capacity) {
+    constexpr void deallocate() noexcept {
+        if (not data_is_inlined()) {
+            AllocTraits::deallocate(allocator(), data(), capacity());
+        }
+    }
+
+    struct ReallocateWithCopy {
+        void operator() (auto src, auto cnt, auto dst) {
+            std::ranges::copy_n(src, cnt, dst);
+        }
+    };
+
+    constexpr void reallocate(
+        size_t new_capacity, size_t from_size, auto reallocate_strategy
+    ) {
         assert(new_capacity <= max_size());
         auto new_data = allocate(new_capacity);
-        std::ranges::copy(*this, new_data);
+        reallocate_strategy(data(), from_size, new_data);
         deallocate();
         m_data = new_data;
         m_capacity = new_capacity;
     }
 
-    constexpr void deallocate() noexcept {
-        if (not data_is_inlined()) {
-            AllocTraits::deallocate(*this, data(), capacity());
+    constexpr void reallocate(size_t new_capacity) {
+        reallocate(new_capacity, size(), ReallocateWithCopy());
+    }
+
+    static constexpr size_type grow_capacity(size_type capacity) noexcept {
+        return std::max<size_type>(2 * capacity, 1);
+    }
+
+    template <typename S = ReallocateWithCopy>
+    constexpr void grow(
+        size_type new_size, size_type from_size, S reallocate_strategy = S()
+    ) {
+        auto new_capacity = grow_capacity(capacity());
+        if (new_size < new_capacity) {
+            try {
+                reallocate(new_capacity, from_size, reallocate_strategy);
+                return;
+            } catch (const std::bad_alloc&) {}
         }
+        reallocate(new_size, from_size, std::move(reallocate_strategy));
+    }
+
+    template <typename S = ReallocateWithCopy>
+    constexpr void grow_to(size_type new_size, S reallocate_strategy = S()) {
+        grow(new_size, size(), std::move(reallocate_strategy));
     }
 
     constexpr const T* inline_data() const noexcept;
@@ -992,7 +982,7 @@ public:
                 return not other.data_is_inlined();
             } else {
                 return
-                    this->allocators_equal(other) and
+                    allocators_equal(*this, other) and
                     not other.data_is_inlined();
             }
         } ();
@@ -1031,7 +1021,7 @@ public:
     constexpr void swap(InlineTrivialVector& other) noexcept {
         constexpr bool propagate =
             AllocTraits::propagate_on_container_swap::value;
-        assert(propagate or this->allocators_equal(other));
+        assert(propagate or Base::allocators_equal(*this, other));
 
         auto inline_heap_swap = [] (
             InlineTrivialVector& inl, InlineTrivialVector& heap
