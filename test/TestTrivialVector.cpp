@@ -1938,3 +1938,51 @@ TEST(TestEraseIf, FreeFunc) {
     EXPECT_TRUE(std::ranges::equal(vec, std::array{2, 4, 4, 4, 4}))
         << "Vec is " << vec;
 }
+
+TEST(TestCompare, EqualEmpty) {
+    TrivialVector<int> vec1, vec2;
+    EXPECT_EQ(vec1, vec2);
+}
+
+TEST(TestCompare, Equal) {
+    TrivialVector<int> vec1 = {1, 2, 3, 4};
+    auto vec2 = vec1;
+    EXPECT_EQ(vec1, vec2);
+}
+
+TEST(TestCompare, NotEqual) {
+    TrivialVector<int> vec1 = {1, 2, 3, 4};
+    auto vec2 = vec1;
+    vec2.front() = 0;
+    EXPECT_NE(vec1, vec2);
+}
+
+TEST(TestCompare, Less) {
+    TrivialVector<int> vec1 = {1, 2, 3, 4};
+    auto vec2 = vec1;
+    vec2.front() = 0;
+    EXPECT_LT(vec2, vec1);
+}
+
+TEST(TestCompare, LessEqual) {
+    TrivialVector<int> vec1 = {1, 2, 3, 4};
+    auto vec2 = vec1;
+    EXPECT_LE(vec2, vec1);
+    vec2.front() = 0;
+    EXPECT_LE(vec2, vec1);
+}
+
+TEST(TestCompare, Greater) {
+    TrivialVector<int> vec1 = {1, 2, 3, 4};
+    auto vec2 = vec1;
+    vec2.back() = 10;
+    EXPECT_GT(vec2, vec1);
+}
+
+TEST(TestCompare, GreaterEqual) {
+    TrivialVector<int> vec1 = {1, 2, 3, 4};
+    auto vec2 = vec1;
+    EXPECT_GE(vec2, vec1);
+    vec2.front() = 5;
+    EXPECT_GE(vec2, vec1);
+}

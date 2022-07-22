@@ -964,6 +964,22 @@ constexpr TRIVIAL_VECTOR_HEADER::size_type erase_if(
     vec.truncate(vec.size() - count);
     return count;
 }
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr bool operator==(
+    const TRIVIAL_VECTOR_HEADER& lhs, const TRIVIAL_VECTOR_HEADER& rhs
+) noexcept {
+    return std::ranges::equal(lhs, rhs);
+}
+
+TRIVIAL_VECTOR_HEADER_TEMPLATE
+constexpr auto operator<=>(
+    const TRIVIAL_VECTOR_HEADER& lhs, const TRIVIAL_VECTOR_HEADER& rhs
+) noexcept {
+    return std::lexicographical_compare_three_way(
+        lhs.begin(), lhs.end(),
+        rhs.begin(), rhs.end());
+}
 }
 
 namespace Attractadore {
