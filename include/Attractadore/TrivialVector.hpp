@@ -36,14 +36,10 @@ protected:
     using Ptr = AllocTraits::pointer;
     using PtrTraits = std::pointer_traits<Ptr>;
     using ConstPtr = AllocTraits::const_pointer;
-    //using SizeT = unsigned;
-    //using SizeT = int;
-    using SizeT = size_t;
-    //using SizeT = ssize_t;
 
-    Ptr         m_data;
-    SizeT       m_capacity;
-    SizeT       m_size = 0;
+    Ptr     m_data;
+    size_t  m_capacity;
+    size_t  m_size;
 
 public:
     using value_type = T;
@@ -66,11 +62,24 @@ public:
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 protected:
-    constexpr TrivialVectorHeader(Allocator alloc, Ptr data_init, size_type capacity) noexcept:
-        Allocator{std::move(alloc)}, m_data{data_init}, m_capacity(capacity) {
+    constexpr TrivialVectorHeader(
+        Allocator alloc,
+        pointer ptr,
+        size_type capacity,
+        size_type size = 0
+    ) noexcept:
+        Allocator(std::move(alloc)),
+        m_data(ptr),
+        m_capacity(capacity),
+        m_size(size)
+    {
+        assert(size <= capacity);
         assert(capacity <= max_size());
     }
-    constexpr ~TrivialVectorHeader() = default;
+
+    constexpr ~TrivialVectorHeader() {
+        deallocate();
+    }
 
 public:
     constexpr TrivialVectorHeader& operator=(
@@ -136,6 +145,26 @@ public:
 
     constexpr void assign(std::initializer_list<value_type> init) {
         assign(init.begin(), init.end());
+    }
+
+    constexpr void assign(
+        pointer ptr, size_type capacity, size_type size
+    ) noexcept(std::is_nothrow_default_constructible_v<Allocator>)
+        requires std::default_initializable<Allocator>
+    {
+        assign(ptr, capacity, size, Allocator());
+    }
+
+    constexpr void assign(
+        pointer ptr, size_type capacity, size_type size, Allocator alloc
+    ) noexcept requires std::is_move_assignable_v<Allocator> {
+        // TODO: is it OK if capacity <= max_inline_size()?
+        assert(size <= capacity);
+        deallocate();
+        m_data = ptr;
+        m_capacity = capacity;
+        m_size = size;
+        allocator() = std::move(alloc);
     }
 
     constexpr const allocator_type& get_allocator() const noexcept { return *this; }
@@ -265,9 +294,7 @@ public:
     }
 
     static constexpr size_type max_size() noexcept {
-        return std::min<size_type>(
-            std::numeric_limits<SizeT>::max(),
-            std::numeric_limits<size_type>::max() / sizeof(value_type));
+        return std::numeric_limits<size_type>::max() / sizeof(value_type);
     }
 
     constexpr std::span<const std::byte> as_bytes() const noexcept {
@@ -563,6 +590,7 @@ public:
             auto [new_data, new_capacity] =
                 allocate_for_size(m_size + 1);
             std::ranges::copy(*this, new_data);
+            deallocate();
             m_data = new_data;
             m_capacity = new_capacity;
         }
@@ -605,11 +633,16 @@ public:
         if (capacity() < new_size) {
             auto [new_data, new_capacity] =
                 allocate_for_size(new_size);
+            deallocate();
             m_data = new_data;
             m_capacity = new_capacity;
         }
         m_size = new_size;
     }
+
+    constexpr bool data_is_inlined() const noexcept {
+        return data() == inline_data();
+    };
 
 protected:
     struct AllocateResult {
@@ -669,10 +702,6 @@ protected:
 
     constexpr const T* inline_data() const noexcept;
     constexpr T* inline_data() noexcept;
-
-    constexpr bool data_is_inlined() const noexcept {
-        return data() == inline_data();
-    };
 };
 
 template<typename T, unsigned InlineCapacity, typename Allocator>
@@ -746,8 +775,9 @@ public:
     using typename Base::reverse_iterator;
     using typename Base::const_reverse_iterator;
 
-    constexpr InlineTrivialVector() noexcept(noexcept(Allocator()))
-        requires std::default_initializable<Allocator>:
+    constexpr InlineTrivialVector() noexcept(
+        std::is_nothrow_default_constructible_v<Allocator>
+    ) requires std::default_initializable<Allocator>:
         InlineTrivialVector(Allocator()) {}
 
     constexpr explicit InlineTrivialVector(Allocator alloc) noexcept:
@@ -828,6 +858,18 @@ public:
     constexpr InlineTrivialVector(
         std::initializer_list<value_type> init
     ): InlineTrivialVector(init.begin(), init.end()) {}
+
+    constexpr InlineTrivialVector(
+        pointer ptr, size_type capacity, size_type size
+    ) noexcept(std::is_nothrow_default_constructible_v<Allocator>)
+        requires std::default_initializable<Allocator>:
+        InlineTrivialVector(Allocator(), ptr, capacity, size) {}
+
+    constexpr InlineTrivialVector(
+        pointer ptr, size_type capacity, size_type size, Allocator alloc
+    ) noexcept: Base(std::move(alloc), ptr, capacity, size) {}
+
+    constexpr ~InlineTrivialVector() = default;
 
     constexpr InlineTrivialVector& operator=(
         const InlineTrivialVector& other
@@ -940,6 +982,23 @@ public:
 
     constexpr size_type shrink_to_fit() noexcept {
         return shrink(this->size());
+    }
+
+    struct Allocation {
+        pointer     ptr;
+        size_type   capacity;
+        size_type   size;
+        Allocator   allocator;
+    };
+
+    constexpr Allocation release() noexcept {
+        assert(not this->data_is_inlined());
+        return {
+            .ptr = std::exchange(m_data, this->inline_data()),
+            .capacity = std::exchange(m_capacity, max_inline_size()),
+            .size = std::exchange(m_size, 0),
+            .allocator = std::move(this->allocator()),
+        };
     }
 
 protected:

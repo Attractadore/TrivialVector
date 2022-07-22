@@ -2085,3 +2085,115 @@ TEST(AsBytes, AsBytes) {
     EXPECT_EQ(std::span{vec}.size_bytes(), bytes.size());
     EXPECT_EQ(reinterpret_cast<std::byte*>(vec.data()), bytes.data());
 }
+
+TEST(TestRelease, Empty) {
+    TrivialVector<int> vec;
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+    auto old_size = vec.size();
+    auto old_alloc = vec.get_allocator();
+    auto alloc = vec.release();
+    EXPECT_EQ(alloc.ptr, old_data);
+    EXPECT_EQ(alloc.capacity, old_capacity);
+    EXPECT_EQ(alloc.size, old_size);
+    EXPECT_EQ(alloc.allocator, old_alloc);
+    alloc.allocator.deallocate(alloc.ptr, alloc.capacity);
+}
+
+TEST(TestRelease, Inlined) {
+    InlineTrivialVector<int, 1> vec;
+    EXPECT_ASSERT(vec.release());
+}
+
+TEST(TestRelease, Release) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+    auto old_size = vec.size();
+    auto old_alloc = vec.get_allocator();
+    auto alloc = vec.release();
+    EXPECT_EQ(alloc.ptr, old_data);
+    EXPECT_EQ(alloc.capacity, old_capacity);
+    EXPECT_EQ(alloc.size, old_size);
+    EXPECT_EQ(alloc.allocator, old_alloc);
+    EXPECT_TRUE(
+        std::ranges::equal(std::span{alloc.ptr, alloc.size}, arr));
+    alloc.allocator.deallocate(alloc.ptr, alloc.capacity);
+}
+
+TEST(TestAssign, FromEmptyPtr) {
+    TrivialVector<int> vec;
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+    auto old_size = vec.size();
+    auto old_alloc = vec.get_allocator();
+    auto alloc = vec.release();
+    vec.assign(
+        alloc.ptr,
+        alloc.capacity,
+        alloc.size, std::move(alloc.allocator));
+    EXPECT_EQ(vec.data(), old_data);
+    EXPECT_EQ(vec.capacity(), old_capacity);
+    EXPECT_EQ(vec.size(), old_size);
+    EXPECT_EQ(vec.get_allocator(), old_alloc);
+}
+
+TEST(TestAssign, FromNotEmptyPtr) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+    auto old_size = vec.size();
+    auto old_alloc = vec.get_allocator();
+    auto alloc = vec.release();
+    vec.assign(
+        alloc.ptr,
+        alloc.capacity,
+        alloc.size, std::move(alloc.allocator));
+    EXPECT_EQ(vec.data(), old_data);
+    EXPECT_EQ(vec.capacity(), old_capacity);
+    EXPECT_EQ(vec.size(), old_size);
+    EXPECT_EQ(vec.get_allocator(), old_alloc);
+    EXPECT_TRUE(
+        std::ranges::equal(vec, arr));
+}
+
+TEST(TestConstruct, FromEmptyPtr) {
+    TrivialVector<int> vec;
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+    auto old_size = vec.size();
+    auto old_alloc = vec.get_allocator();
+    auto alloc = vec.release();
+    InlineTrivialVector<int, 4> vec2(
+        alloc.ptr,
+        alloc.capacity,
+        alloc.size,
+        std::move(alloc.allocator));
+    EXPECT_EQ(vec2.data(), old_data);
+    EXPECT_EQ(vec2.capacity(), old_capacity);
+    EXPECT_EQ(vec2.size(), old_size);
+    EXPECT_EQ(vec2.get_allocator(), old_alloc);
+}
+
+TEST(TestConstruct, FromNotEmptyPtr) {
+    std::array arr = {1, 2, 3, 4};
+    TrivialVector<int> vec(arr);
+    auto old_data = vec.data();
+    auto old_capacity = vec.capacity();
+    auto old_size = vec.size();
+    auto old_alloc = vec.get_allocator();
+    auto alloc = vec.release();
+    InlineTrivialVector<int, 4> vec2(
+        alloc.ptr,
+        alloc.capacity,
+        alloc.size,
+        std::move(alloc.allocator));
+    EXPECT_EQ(vec2.data(), old_data);
+    EXPECT_EQ(vec2.capacity(), old_capacity);
+    EXPECT_EQ(vec2.size(), old_size);
+    EXPECT_EQ(vec2.get_allocator(), old_alloc);
+    EXPECT_TRUE(
+        std::ranges::equal(vec2, arr));
+}
