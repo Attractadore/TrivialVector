@@ -1922,3 +1922,19 @@ TEST(TestFit, ToBigger) {
     vec.fit(new_size);
     EXPECT_EQ(vec.size(), new_size);
 }
+
+TEST(TestErase, FreeFunc) {
+    TrivialVector<int> vec = {1, 2, 3, 4, 4, 4, 5, 4};
+    auto cnt = erase(vec, 4);
+    EXPECT_EQ(cnt, 4);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{1, 2, 3, 5}))
+        << "Vec is " << vec;
+}
+
+TEST(TestEraseIf, FreeFunc) {
+    TrivialVector<int> vec = {1, 2, 3, 4, 4, 4, 5, 4};
+    auto cnt = erase_if(vec, [] (int i) { return i % 2; });
+    EXPECT_EQ(cnt, 3);
+    EXPECT_TRUE(std::ranges::equal(vec, std::array{2, 4, 4, 4, 4}))
+        << "Vec is " << vec;
+}

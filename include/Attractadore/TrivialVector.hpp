@@ -945,25 +945,24 @@ TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr TRIVIAL_VECTOR_HEADER::size_type erase(
     TRIVIAL_VECTOR_HEADER& vec, const T& value
 ) noexcept {
-    auto old_size = vec.size();
-    auto new_size = std::ranges::size(
+    auto count = std::ranges::size(
         std::ranges::remove(vec, value)
     );
-    vec.truncate(new_size);
-    return old_size - new_size;
+    vec.truncate(vec.size() - count);
+    return count;
 }
 
 template<typename T, typename Allocator, typename Pred>
-    requires std::same_as<std::invoke_result_t<Pred, T>, bool> 
 constexpr TRIVIAL_VECTOR_HEADER::size_type erase_if(
     TRIVIAL_VECTOR_HEADER& vec, Pred pred
-) {
-    auto old_size = vec.size();
-    auto new_size = std::ranges::size(
+) requires std::indirect_unary_predicate<
+    Pred, typename TRIVIAL_VECTOR_HEADER::iterator>
+{
+    auto count = std::ranges::size(
         std::ranges::remove_if(vec, std::move(pred))
     );
-    vec.truncate(new_size);
-    return old_size - new_size;
+    vec.truncate(vec.size() - count);
+    return count;
 }
 }
 
