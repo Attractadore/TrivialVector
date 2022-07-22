@@ -714,6 +714,32 @@ TEST(TestCapacity, NotEmpty) {
     EXPECT_GE(vec.capacity(), vec.size());
 }
 
+TEST(TestShrink, Empty) {
+    TrivialVector<int> vec;
+    auto new_cap = vec.shrink(0);
+    EXPECT_EQ(new_cap, 0);
+    EXPECT_EQ(new_cap, vec.capacity());
+}
+
+TEST(TestShrink, GreaterThanSize) {
+    TrivialVector<int> vec = {1, 2, 3, 4, 5};
+    vec.reserve(vec.capacity() * 2);
+    auto cap = vec.size() + 1;
+    auto new_cap = vec.shrink(cap);
+    EXPECT_EQ(new_cap, vec.capacity());
+    EXPECT_GE(new_cap, cap);
+}
+
+TEST(TestShrink, SmallerThanSize) {
+    TrivialVector<int> vec = {1, 2, 3, 4, 5};
+    vec.reserve(vec.capacity() * 2);
+    auto cap = vec.size() - 1;
+    auto new_cap = vec.shrink(cap);
+    EXPECT_EQ(new_cap, vec.capacity());
+    EXPECT_GE(new_cap, cap);
+    EXPECT_GE(new_cap, vec.size());
+}
+
 TEST(TestShrinkToFit, Empty) {
     TrivialVector<int> vec;
     EXPECT_EQ(vec.capacity(), 0);

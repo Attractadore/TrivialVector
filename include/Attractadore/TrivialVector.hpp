@@ -265,10 +265,11 @@ public:
             std::numeric_limits<size_type>::max() / sizeof(value_type));
     }
 
-    constexpr void reserve(size_type new_capacity) {
+    constexpr size_type reserve(size_type new_capacity) {
         if (new_capacity > capacity()) {
             reallocate(new_capacity);
         }
+        return capacity();
     }
 
     constexpr size_type capacity() const noexcept {
@@ -621,10 +622,17 @@ protected:
         return allocate(allocator(), new_capacity);
     }
 
-    constexpr void reallocate(size_t new_capacity);
+    constexpr void reallocate(size_t new_capacity) {
+        assert(new_capacity <= max_size());
+        auto new_data = allocate(new_capacity);
+        std::ranges::copy(*this, new_data);
+        deallocate();
+        m_data = new_data;
+        m_capacity = new_capacity;
+    }
 
     constexpr void deallocate() noexcept {
-        if (capacity() > 0 and not data_is_inlined()) {
+        if (not data_is_inlined()) {
             AllocTraits::deallocate(*this, data(), capacity());
         }
     }
@@ -885,17 +893,23 @@ public:
         return Storage::Capacity;
     }
 
-    constexpr void shrink_to_fit() noexcept {
+    constexpr size_type shrink(size_type new_capacity) noexcept {
         if (not this->data_is_inlined()) {
-            if (this->size() <= max_inline_size()) {
+            new_capacity = std::max(new_capacity, this->size());
+            if (new_capacity <= max_inline_size()) {
                 std::ranges::copy(*this, this->inline_data());
                 deallocate();
-            } else if (this->size() <= this->capacity()) {
+            } else if (new_capacity < this->capacity()) {
                 try {
-                    this->reallocate(this->size());
+                    this->reallocate(new_capacity);
                 } catch (const std::bad_alloc&) {}
             }
         }
+        return this->capacity();
+    }
+
+    constexpr size_type shrink_to_fit() noexcept {
+        return shrink(this->size());
     }
 
 protected:
@@ -915,16 +929,6 @@ protected:
         return Storage::addr();
     }
 };
-
-TRIVIAL_VECTOR_HEADER_TEMPLATE
-constexpr void TRIVIAL_VECTOR_HEADER::reallocate(size_type new_capacity) {
-    assert(new_capacity < max_size());
-    auto new_data = allocate(new_capacity);
-    std::ranges::copy(*this, new_data);
-    deallocate();
-    m_data = new_data;
-    m_capacity = new_capacity;
-}
 
 TRIVIAL_VECTOR_HEADER_TEMPLATE
 constexpr auto TRIVIAL_VECTOR_HEADER::inline_data() const noexcept -> const T* {
