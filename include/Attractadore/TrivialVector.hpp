@@ -29,10 +29,109 @@ template<typename T, unsigned InlineCapacity, typename Allocator> \
 #define INLINE_TRIVIAL_VECTOR Attractadore::TrivialVectorNameSpace::InlineTrivialVector<T, InlineCapacity, Allocator>
 
 template<typename P>
-class VectorIterator: std::contiguous_iterator_tag {
-    using Element = std::pointer_traits<P>::element_type;
+class VectorIterator {
     using Ptr = P;
-    using ConstPtr = typename std::pointer_traits<Ptr>::rebind<const Element>;
+    using Element = std::pointer_traits<P>::element_type;
+    using ConstPtr =
+        typename std::pointer_traits<Ptr>::rebind<
+            std::add_const_t<Element>>;
+
+    Ptr ptr;
+
+public:
+    using difference_type   = ptrdiff_t;
+    using value_type        = Element;
+    using reference         = value_type&;
+    using iterator_category = std::contiguous_iterator_tag;
+
+    constexpr VectorIterator(Ptr ptr = nullptr) noexcept : ptr(ptr) {}
+    constexpr operator VectorIterator<ConstPtr>() const noexcept {
+        return {ptr};
+    }
+
+    // InputIterator
+
+    constexpr reference operator*() const noexcept {
+        return *ptr;
+    }
+
+    constexpr Ptr operator->() const noexcept {
+        return ptr;
+    }
+
+    constexpr VectorIterator& operator++() noexcept {
+        ++ptr;
+        return *this;
+    }
+
+    constexpr VectorIterator  operator++(int) const noexcept {
+        auto temp = *this;
+        ++(*this);
+        return temp;
+    }
+
+    // ForwardIterator
+
+    friend constexpr bool operator==(
+        const VectorIterator& lhs, const VectorIterator& rhs
+    ) noexcept = default;
+
+    // BidirectionalIterator
+
+    constexpr VectorIterator& operator--() noexcept {
+        --ptr;
+        return *this;
+    }
+
+    constexpr VectorIterator operator--(int) const noexcept {
+        auto temp = *this;
+        --(*this);
+        return temp;
+    }
+
+    // RandomAccessIterator
+
+    friend constexpr auto operator<=>(
+        const VectorIterator& lhs, const VectorIterator& rhs
+    ) noexcept = default;
+
+    friend constexpr VectorIterator operator+(
+        const VectorIterator& it, difference_type d
+    ) noexcept {
+        return {it.ptr + d};
+    }
+
+    friend constexpr VectorIterator operator+(
+        difference_type d, const VectorIterator& it
+    ) noexcept {
+        return it + d;
+    }
+
+    friend constexpr difference_type operator-(
+        const VectorIterator& lhs, const VectorIterator& rhs
+    ) noexcept {
+        return lhs.ptr - rhs.ptr;
+    }
+
+    friend constexpr VectorIterator operator-(
+        const VectorIterator& it, difference_type d
+    ) noexcept {
+        return it + (-d);
+    }
+
+    constexpr VectorIterator& operator+=(difference_type d) noexcept {
+        ptr += d;
+        return *this;
+    }
+
+    constexpr VectorIterator& operator-=(difference_type d) noexcept {
+        ptr -= d;
+        return *this;
+    }
+
+    constexpr reference operator[](difference_type idx) const noexcept {
+        return ptr[idx];
+    }
 };
 
 template<
@@ -59,16 +158,17 @@ public:
     using const_reference = const value_type&;
     using pointer = Ptr;
     using const_pointer = ConstPtr;
-    // TODO: replace with real iterators
-#if 0
     using iterator = VectorIterator<pointer>;
     using const_iterator = VectorIterator<const_pointer>;
-#else
-    using iterator = pointer;
-    using const_iterator = const_pointer;
-#endif
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+    static_assert(std::contiguous_iterator<iterator>);
+    static_assert(std::contiguous_iterator<const_iterator>);
+    static_assert(std::convertible_to<iterator, const_iterator>);
+    static_assert(not std::convertible_to<const_iterator, iterator>);
+    static_assert(std::convertible_to<reverse_iterator, const_reverse_iterator>);
+    static_assert(not std::convertible_to<const_reverse_iterator, reverse_iterator>);
 
 protected:
     constexpr TrivialVectorHeader(
@@ -1064,7 +1164,7 @@ template<
     return count;
 }
 
-#undef TRIVIAL_VECTOR_HEADER_TEMPLATE_
+#undef TRIVIAL_VECTOR_HEADER_TEMPLATE
 #undef TRIVIAL_VECTOR_HEADER
 #undef INLINE_TRIVIAL_VECTOR_TEMPLATE
 #undef INLINE_TRIVIAL_VECTOR
