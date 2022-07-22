@@ -806,7 +806,7 @@ protected:
 inline constexpr unsigned DefaultInlineBufferSize = 64;
 
 template<typename T>
-inline unsigned DefaultInlineCapacity = DefaultInlineBufferSize / sizeof(T);
+inline constexpr unsigned DefaultInlineCapacity = DefaultInlineBufferSize / sizeof(T);
 
 template<typename T, unsigned MinCapacity, size_t MinAlignSize>
 struct InlineStorage {
@@ -1097,6 +1097,31 @@ public:
         };
     }
 };
+
+template<std::input_iterator Iter, std::sentinel_for<Iter> Sent>
+InlineTrivialVector(Iter, Sent) ->
+    InlineTrivialVector<std::iter_value_t<Iter>>;
+
+template<
+    std::input_iterator Iter,
+    std::sentinel_for<Iter> Sent,
+    typename Allocator
+> InlineTrivialVector(Iter, Sent, Allocator) ->
+    InlineTrivialVector<
+        std::iter_value_t<Iter>,
+        DefaultInlineCapacity<std::iter_value_t<Iter>>,
+        Allocator>;
+
+template<std::ranges::input_range R>
+explicit InlineTrivialVector(R&&) ->
+    InlineTrivialVector<std::ranges::range_value_t<R>>;
+
+template<std::ranges::input_range R, typename Allocator>
+InlineTrivialVector(R&&, Allocator) ->
+    InlineTrivialVector<
+        std::ranges::range_value_t<R>,
+        DefaultInlineCapacity<std::ranges::range_value_t<R>>,
+        Allocator>;
 
 INLINE_TRIVIAL_VECTOR_TEMPLATE
 void swap(INLINE_TRIVIAL_VECTOR& lhs, INLINE_TRIVIAL_VECTOR& rhs) noexcept {
