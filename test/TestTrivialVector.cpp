@@ -106,21 +106,6 @@ TEST(TestConstruct, CopyConstruct) {
     EXPECT_TRUE(std::ranges::equal(vec, vec2));
 }
 
-TEST(TestConstruct, ExtendedCopyConstruct) {
-    std::array arr = {1, 2, 3, 4, 5};
-    {
-        InlineTrivialVector<int, 5> vec(arr);
-        TrivialVector<int> vec2 = vec;
-        EXPECT_EQ(vec.size(), vec2.size());
-        EXPECT_TRUE(std::ranges::equal(vec, vec2));
-    } {
-        TrivialVector<int> vec(arr);
-        InlineTrivialVector<int, 3> vec2 = vec;
-        EXPECT_EQ(vec.size(), vec2.size());
-        EXPECT_TRUE(std::ranges::equal(vec, vec2));
-    }
-}
-
 TEST(TestConstruct, MoveConstruct) {
     std::array arr = {1, 2, 3, 4, 5};
     TrivialVector<int> vec(arr);
@@ -135,133 +120,6 @@ TEST(TestConstruct, MoveConstruct) {
 
     EXPECT_EQ(vec2.data(), old_data);
     EXPECT_EQ(vec2.capacity(), old_capacity);
-    EXPECT_EQ(vec2.size(), old_size);
-
-    EXPECT_TRUE(std::ranges::equal(vec2, arr));
-}
-
-TEST(TestConstruct, ExtendedMoveConstructNoAllocAlwaysSuccessSteal) {
-    std::array arr = {1, 2, 3, 4, 5};
-    TrivialVector<int> vec(arr);
-    auto old_capacity = vec.capacity();
-    auto old_data = vec.data();
-    auto old_size = vec.size();
-
-    InlineTrivialVector<int, 4> vec2 = std::move(vec);
-
-    EXPECT_EQ(vec.capacity(), 0);
-    EXPECT_TRUE(vec.empty());
-
-    EXPECT_EQ(vec2.data(), old_data);
-    EXPECT_EQ(vec2.capacity(), old_capacity);
-    EXPECT_EQ(vec2.size(), old_size);
-
-    EXPECT_TRUE(std::ranges::equal(vec2, arr));
-}
-
-TEST(TestConstruct, ExtendedMoveConstructNoAllocAlwaysSuccessCopy) {
-    std::array arr = {1, 2, 3, 4, 5};
-    InlineTrivialVector<int, 5> vec(arr);
-    auto old_data = vec.data();
-    auto old_capacity = vec.capacity();
-    auto old_size = vec.size();
-
-    InlineTrivialVector<int, 6> vec2 = std::move(vec);
-
-    EXPECT_EQ(vec.data(), old_data);
-    EXPECT_EQ(vec.capacity(), old_capacity);
-    EXPECT_TRUE(vec.empty());
-
-    EXPECT_NE(vec2.data(), old_data);
-    EXPECT_EQ(vec2.capacity(), vec2.max_inline_size());
-    EXPECT_EQ(vec2.size(), old_size);
-
-    EXPECT_TRUE(std::ranges::equal(vec2, arr));
-}
-
-TEST(TestConstruct, ExtendedMoveConstructNoAllocAlwaysSuccessStealOrCopy) {
-    std::array arr = {1, 2, 3, 4, 5};
-    TrivialVector<int> vec(arr);
-    auto old_data = vec.data();
-    auto old_capacity = vec.capacity();
-    auto old_size = vec.size();
-
-    InlineTrivialVector<int, 6> vec2 = std::move(vec);
-
-    bool stolen = vec.capacity() == 0;
-    if (stolen) {
-        EXPECT_EQ(vec.capacity(), 0);
-        EXPECT_TRUE(vec.empty());
-
-        EXPECT_EQ(vec2.data(), old_data);
-        EXPECT_EQ(vec2.capacity(), old_capacity);
-        EXPECT_EQ(vec2.size(), old_size);
-    } else {
-        EXPECT_EQ(vec.data(), old_data);
-        EXPECT_EQ(vec.capacity(), old_capacity);
-        EXPECT_TRUE(vec.empty());
-
-        EXPECT_NE(vec2.data(), old_data);
-        EXPECT_EQ(vec2.capacity(), vec2.max_inline_size());
-        EXPECT_EQ(vec2.size(), old_size);
-    }
-
-    EXPECT_TRUE(std::ranges::equal(vec2, arr));
-}
-
-TEST(TestConstruct, ExtendedMoveConstructNoAllocSuccessSteal) {
-    std::array arr = {1, 2, 3, 4, 5};
-    InlineTrivialVector<int, 4> vec(arr);
-    auto old_capacity = vec.capacity();
-    auto old_data = vec.data();
-    auto old_size = vec.size();
-
-    InlineTrivialVector<int, 3> vec2 = std::move(vec);
-
-    EXPECT_EQ(vec.capacity(), vec.max_inline_size());
-    EXPECT_TRUE(vec.empty());
-
-    EXPECT_EQ(vec2.data(), old_data);
-    EXPECT_EQ(vec2.capacity(), old_capacity);
-    EXPECT_EQ(vec2.size(), old_size);
-
-    EXPECT_TRUE(std::ranges::equal(vec2, arr));
-}
-
-TEST(TestConstruct, ExtendedMoveConstructNoAllocSuccessCopy) {
-    std::array arr = {1, 2, 3, 4, 5};
-    InlineTrivialVector<int, 6> vec(arr);
-    auto old_data = vec.data();
-    auto old_capacity = vec.capacity();
-    auto old_size = vec.size();
-
-    InlineTrivialVector<int, 5> vec2 = std::move(vec);
-
-    EXPECT_EQ(vec.data(), old_data);
-    EXPECT_EQ(vec.capacity(), old_capacity);
-    EXPECT_TRUE(vec.empty());
-
-    EXPECT_NE(vec2.data(), old_data);
-    EXPECT_EQ(vec2.capacity(), vec2.max_inline_size());
-    EXPECT_EQ(vec2.size(), old_size);
-
-    EXPECT_TRUE(std::ranges::equal(vec2, arr));
-}
-
-TEST(TestConstruct, ExtendedMoveConstructNoAllocFail) {
-    std::array arr = {1, 2, 3, 4, 5};
-    InlineTrivialVector<int, 6> vec(arr);
-    auto old_data = vec.data();
-    auto old_capacity = vec.capacity();
-    auto old_size = vec.size();
-
-    InlineTrivialVector<int, 4> vec2 = std::move(vec);
-
-    EXPECT_EQ(vec.data(), old_data);
-    EXPECT_EQ(vec.capacity(), old_capacity);
-    EXPECT_TRUE(vec.empty());
-
-    EXPECT_GT(vec2.capacity(), vec2.max_inline_size());
     EXPECT_EQ(vec2.size(), old_size);
 
     EXPECT_TRUE(std::ranges::equal(vec2, arr));
@@ -434,16 +292,10 @@ TEST_F(TestSwap, InlineCopySwap) {
     InlineTrivialVector<int, max_sz> vec1(arr1);
     InlineTrivialVector<int, max_sz> vec2(arr2);
     vec1.swap(vec2);
-    EXPECT_TRUE(std::ranges::equal(vec1, arr2));
-    EXPECT_TRUE(std::ranges::equal(vec2, arr1));
-}
-
-TEST_F(TestSwap, InlineReallocCopySwap) {
-    InlineTrivialVector<int, sz1> vec1(arr1);
-    InlineTrivialVector<int, sz2> vec2(arr2);
-    vec1.swap(vec2);
-    EXPECT_TRUE(std::ranges::equal(vec1, arr2));
-    EXPECT_TRUE(std::ranges::equal(vec2, arr1));
+    EXPECT_TRUE(std::ranges::equal(vec1, arr2))
+        << "Vec1 is " << vec1;
+    EXPECT_TRUE(std::ranges::equal(vec2, arr1))
+        << "Vec2 is " << vec1;
 }
 
 TEST_F(TestSwap, InlineHeapHybridSwap) {
@@ -455,22 +307,6 @@ TEST_F(TestSwap, InlineHeapHybridSwap) {
     vec2.swap(vec1);
     EXPECT_TRUE(std::ranges::equal(vec1, arr2));
     EXPECT_TRUE(std::ranges::equal(vec2, arr3));
-}
-
-TEST_F(TestSwap, InlineHeapCopySwap) {
-    InlineTrivialVector<int, sz1> vec1(arr1);
-    InlineTrivialVector<int, sz2> vec2(arr3);
-    vec1.swap(vec2);
-    EXPECT_TRUE(std::ranges::equal(vec1, arr3));
-    EXPECT_TRUE(std::ranges::equal(vec2, arr1));
-}
-
-TEST_F(TestSwap, InlineHeapReallocPointerSwap) {
-    InlineTrivialVector<int, sz2> vec1(arr2);
-    TrivialVector<int> vec2(arr3);
-    vec1.swap(vec2);
-    EXPECT_TRUE(std::ranges::equal(vec1, arr3));
-    EXPECT_TRUE(std::ranges::equal(vec2, arr2));
 }
 
 TEST(TestAssign, FillWithValueEmpty) {
