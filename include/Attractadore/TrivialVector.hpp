@@ -202,13 +202,16 @@ public:
                     not data_is_inlined() or
                     capacity() < other.size();
                 if (must_realloc) {
+                    auto alloc = other.get_allocator();
                     auto new_capacity = other.size();
-                    auto new_data = other.allocate(new_capacity);
+                    auto new_data = AllocTraits::allocate(alloc, new_capacity);
                     deallocate();
+                    allocator() = std::move(alloc);
                     m_data = new_data;
                     m_capacity = new_capacity;
+                } else {
+                    allocator() = other.get_allocator();
                 }
-                allocator() = other.get_allocator();
             }
         }
         assign(other);
